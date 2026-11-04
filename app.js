@@ -5,6 +5,7 @@ const mediaLink = document.querySelector("#media-link");
 const statusMessage = document.querySelector("#status");
 const today = new Date().toISOString().slice(0, 10);
 
+dateInput.min = "1995-06-16";
 dateInput.max = today;
 dateInput.value = today;
 
@@ -91,8 +92,11 @@ async function loadPicture(date) {
     displayImage(data);
     setStatus("");
   } catch (error) {
-    showPlaceholder(error.message || "Unable to load the image. Please try again.", true);
-    setStatus(error.message || "Unable to load the image. Please try again.", true);
+    const message = error instanceof TypeError
+      ? "Unable to connect to NASA’s image service. Check your connection and try again."
+      : error.message || "Unable to load the image. Please try again.";
+    showPlaceholder(message, true);
+    setStatus(message, true);
   } finally {
     dateInput.disabled = false;
     dateForm.querySelector("button").disabled = false;

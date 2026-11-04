@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#061b3a">
+    <meta name="description" content="Explore NASA's Astronomy Picture of the Day.">
+    <title>Astronomy Picture of the Day</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Astronomy Picture of the Day home">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span class="brand-name">ASTRONOMY <span>PICTURE OF THE DAY</span></span>
+      </a>
+      <span class="header-note">A view of the universe, every day</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">Explore the cosmos</p>
+        <h1 id="page-title">Astronomy Picture<br class="desktop-break"> of the Day</h1>
+        <p class="intro-copy">A new perspective on our universe, selected daily by NASA.</p>
+      </section>
+
+      <section class="feature" aria-label="Today's astronomy picture">
+        <div class="media-frame" id="media-frame">
+          <div class="media-placeholder" id="media-placeholder" role="status">Loading today’s image…</div>
+        </div>
+        <div class="story">
+          <div class="story-topline">
+            <p class="eyebrow">The daily image</p>
+            <time id="image-date"></time>
+          </div>
+          <h2 id="image-title">The universe, in focus</h2>
+          <p class="copyright" id="image-copyright"></p>
+          <p class="explanation" id="image-explanation">Discover a new view of the cosmos, with context from NASA’s Astronomy Picture of the Day.</p>
+          <a class="media-link" id="media-link" hidden target="_blank" rel="noopener noreferrer">Explore the original image <span aria-hidden="true">↗</span></a>
+          <form class="date-picker" id="date-form">
+            <label for="date-input">Explore another day</label>
+            <div class="date-controls">
+              <input id="date-input" name="date" type="date" required>
+              <button type="submit">View image <span aria-hidden="true">→</span></button>
+            </div>
+          </form>
+          <p class="status" id="status" aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Imagery and astronomy content provided by NASA APOD.</span>
+      <a href="https://apod.nasa.gov/apod/astropix.html" target="_blank" rel="noopener noreferrer">Visit NASA APOD <span aria-hidden="true">↗</span></a>
+    </footer>
+  </body>
+</html>

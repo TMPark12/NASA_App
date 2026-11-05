@@ -29,6 +29,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 .modal-box iframe { aspect-ratio: 16/9; border: 0; }
 #close { position: absolute; top: 0.5rem; right: 0.75rem; background: var(--nasa-red-dark); border: none; color: #fff; font-size: 1.2rem; border-radius: 4px; cursor: pointer; }
 .error { color: #ff8a7a; text-align: center; }
+.refresh-button { display: block; margin: 0.75rem auto 0; padding: 0.6rem 1rem; border: 2px solid var(--nasa-red); border-radius: 4px; background: var(--nasa-red-dark); color: #fff; font: inherit; cursor: pointer; transition: background 0.2s ease, transform 0.1s ease; }
+.refresh-button:hover { background: var(--nasa-blue); }
+.refresh-button:active { background: var(--nasa-red); transform: scale(0.97); }
 .modal-open { overflow: hidden; }
 .skip-link { position: absolute; left: 0.5rem; top: -4rem; background: #fff; color: #000; padding: 0.5rem 1rem; z-index: 20; }
 .skip-link:focus { top: 0.5rem; }

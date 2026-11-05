@@ -106,20 +106,34 @@ async function loadGallery() {
   const earliest = fmt(addDays(latest, -(DAYS - 1)));
   const gallery = $("gallery");
   gallery.innerHTML = "";
-  $("error").textContent = "";
+  $("error").replaceChildren();
   $("loading").hidden = false;
   try {
     const url = `https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&start_date=${earliest}&end_date=${latest}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`NASA API error (${res.status})`);
-    const sorted = (await res.json()).sort((a, b) => b.date.localeCompare(a.date));
+    if (!res.ok) throw new Error("Unable to load astronomy pictures.");
+    const results = await res.json();
+    if (!Array.isArray(results) || results.length === 0) throw new Error("No astronomy pictures were found for those dates.");
+    const sorted = results.sort((a, b) => b.date.localeCompare(a.date));
     const data = await replacePlaceholders(sorted, latest, earliest);
     data.forEach(entry => { cache[entry.date] = entry; gallery.appendChild(createItem(entry)); });
-  } catch (e) {
-    $("error").textContent = e.message;
+  } catch {
+    showRecoveryMessage($("error"), "Sorry, we couldn't find the astronomy pictures for those dates.");
   } finally {
     $("loading").hidden = true;
   }
+}
+
+function showRecoveryMessage(container, message) {
+  const refresh = document.createElement("button");
+  refresh.type = "button";
+  refresh.className = "refresh-button";
+  refresh.textContent = "Refresh page";
+  refresh.addEventListener("click", () => window.location.reload());
+  container.replaceChildren(
+    document.createTextNode(`${message} Please refresh the page or try a different date. `),
+    refresh
+  );
 }
 
 const canHover = matchMedia("(hover: hover)").matches;
@@ -153,8 +167,10 @@ const cache = {};
 async function fetchEntry(date) {
   if (cache[date]) return cache[date];
   const res = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&date=${date}`);
-  if (!res.ok) throw new Error(`NASA API error (${res.status})`);
-  const [entry] = await replacePlaceholders([await res.json()], date, date);
+  if (!res.ok) throw new Error("Unable to load astronomy picture.");
+  const result = await res.json();
+  if (!result || !result.date) throw new Error("No astronomy picture was found for that date.");
+  const [entry] = await replacePlaceholders([result], date, date);
   return (cache[date] = entry);
 }
 
@@ -167,8 +183,8 @@ async function showNext() {
   $("modal-error").textContent = "";
   try {
     showEntry(await fetchEntry(date));
-  } catch (e) {
-    $("modal-error").textContent = e.message;
+  } catch {
+    showRecoveryMessage($("modal-error"), "Sorry, we couldn't find information for that date.");
   } finally {
     $("next").disabled = !hasPrevious(current.date);
     if (!$("next").disabled) $("next").focus(); else $("back").focus();

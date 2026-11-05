@@ -3,7 +3,7 @@ School project for NASA
 
 Create an HTML page that fetches the 9 most recent NASA pictures
 
-Will display in a rotating gallery
+Display pictures in a rotating gallery
 
 Fetches APOD data for 9 consecutive days based on selected dates, using a valid API key
 

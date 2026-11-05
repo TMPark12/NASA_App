@@ -3,72 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NASA APOD Gallery</title>
-<style>
-  :root { --nasa-blue: #0b3d91; --nasa-red: #fc3d21; --bg: #05070d; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: #fff; font-family: "Helvetica Neue", Arial, sans-serif; }
-  header { background: var(--nasa-blue); padding: 1.5rem; text-align: center; border-bottom: 4px solid var(--nasa-red); }
-  header h1 { margin: 0; letter-spacing: 0.15em; text-transform: uppercase; }
-  main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
-  .controls { display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-  .controls input, .controls button { padding: 0.5rem 0.75rem; font-size: 1rem; border-radius: 4px; border: 1px solid var(--nasa-blue); }
-  .controls button { background: var(--nasa-red); color: #fff; border: none; cursor: pointer; }
-  #fact { background: #101830; border-left: 4px solid var(--nasa-red); padding: 1rem; margin-bottom: 1.5rem; }
-  #loading { text-align: center; font-size: 1.2rem; padding: 2rem; }
-  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
-  .item { background: #101830; border-radius: 6px; overflow: hidden; cursor: pointer; }
-  .thumb { height: 200px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
-  .item:hover .thumb img { transform: scale(1.12); }
-  .video-thumb { padding: 1rem; text-align: center; color: #9db8ff; }
-  .item .meta { padding: 0.75rem; }
-  .item h3 { margin: 0 0 0.25rem; font-size: 1rem; }
-  .item time { color: #9db8ff; font-size: 0.85rem; }
-  #modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; padding: 1rem; z-index: 10; }
-  #modal.open { display: flex; }
-  .modal-box { background: #101830; max-width: 900px; max-height: 95vh; overflow-y: auto; border-radius: 8px; padding: 1rem; position: relative; }
-  .modal-box img, .modal-box iframe { width: 100%; border-radius: 4px; }
-  .modal-box iframe { aspect-ratio: 16/9; border: 0; }
-  #close { position: absolute; top: 0.5rem; right: 0.75rem; background: var(--nasa-red); border: none; color: #fff; font-size: 1.2rem; border-radius: 4px; cursor: pointer; }
-  .error { color: #ff8a7a; text-align: center; }
-</style>
+<title>NASA Astronomy Picture of the Day Gallery</title>
+<meta name="description" content="Browse nine days of NASA Astronomy Pictures of the Day with titles, dates and full explanations.">
+<meta name="theme-color" content="#0b3d91">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#gallery">Skip to gallery</a>
 <header><h1>NASA Astronomy Picture of the Day</h1></header>
-<main>
-  <div class="controls">
-    <label for="start">Start date:</label>
+<main id="main">
+  <form class="controls" id="controls">
+    <label for="start">Latest date:</label>
     <input type="date" id="start" min="1995-06-16">
-    <button id="load">Load 9 days</button>
-  </div>
-  <div id="fact"></div>
-  <div id="loading" hidden>Loading images from NASA...</div>
-  <div id="error" class="error"></div>
-  <div id="gallery"></div>
+    <button type="submit" id="load">Load 9 days</button>
+  </form>
+  <aside id="fact" aria-label="Did you know?"></aside>
+  <div id="loading" role="status" hidden>Loading images from NASA...</div>
+  <div id="error" class="error" role="alert"></div>
+  <ul id="gallery" aria-label="Astronomy pictures of the day"></ul>
 </main>
 
-<div id="modal" role="dialog" aria-modal="true">
+<div id="preview" aria-hidden="true"><img alt=""><img alt=""></div>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-text">
   <div class="modal-box">
-    <button id="close" aria-label="Close">&times;</button>
+    <button type="button" id="close" aria-label="Close dialog"><span aria-hidden="true">&times;</span></button>
     <div id="modal-media"></div>
     <h2 id="modal-title"></h2>
     <time id="modal-date"></time>
     <p id="modal-text"></p>
+    <p id="modal-error" class="error" role="alert"></p>
+    <div class="modal-nav">
+      <button type="button" id="back" class="nav-btn">&larr; Back to gallery</button>
+      <button type="button" id="next" class="nav-btn">Next (previous day) &rarr;</button>
+    </div>
   </div>
 </div>
 
 <script>
-const API_KEY = "DEMO_KEY"; // Replace with your own key from api.nasa.gov
+const API_KEY = "mpk8rTfbF8jh7hDHkpK8MNGcwFcHNccLcRR868T8";
 const DAYS = 9;
-const FACTS = [
-  "A day on Venus is longer than a year on Venus.",
-  "Neutron stars can spin over 600 times per second.",
-  "Light from the Sun takes about 8 minutes to reach Earth.",
-  "Jupiter's Great Red Spot is a storm larger than Earth.",
-  "There are more stars in the universe than grains of sand on Earth's beaches.",
-  "Footprints on the Moon can last millions of years."
-];
+const SCIENCE_FEED = "https://science.nasa.gov/wp-json/wp/v2/apod-basic";
+const FEED_PAGE_SIZE = 25;
 
 const $ = id => document.getElementById(id);
 const fmt = d => d.toISOString().slice(0, 10);
@@ -87,18 +63,58 @@ function youtubeEmbed(url) {
   return null;
 }
 
+const isPlaceholder = e => e.title === "NASA Science" || /nasa-logo/.test(e.url || "");
+
+const stripHtml = html => new DOMParser().parseFromString(html || "", "text/html").body.textContent.trim();
+
+// The science.nasa.gov feed has no date filter, so page through it (newest first) until the range is covered.
+async function fetchScienceFeed(latest, earliest) {
+  const byDate = {};
+  const daysAgo = Math.floor((Date.now() - new Date(latest + "T00:00:00Z")) / 864e5);
+  let page = Math.max(1, Math.floor(daysAgo / FEED_PAGE_SIZE) + 1);
+  const seen = new Set();
+  while (page >= 1 && !seen.has(page) && seen.size < 8) {
+    seen.add(page);
+    const res = await fetch(`${SCIENCE_FEED}?per_page=${FEED_PAGE_SIZE}&page=${page}`);
+    if (!res.ok) break;
+    const items = await res.json();
+    if (!items.length) break;
+    items.forEach(e => { byDate[e.date] = e; });
+    if (items[0].date < latest) page--;
+    else if (items[items.length - 1].date > earliest) page++;
+    else break;
+  }
+  return byDate;
+}
+
+async function replacePlaceholders(data, latest, earliest) {
+  if (!data.some(isPlaceholder)) return data;
+  try {
+    const feed = await fetchScienceFeed(latest, earliest);
+    return data.map(e => {
+      const f = feed[e.date];
+      if (!isPlaceholder(e) || !f || !f.hdurl) return e;
+      return { ...e, title: f.title, media_type: f.media_type, url: f.url, hdurl: f.hdurl, alt: f.alt, explanation: stripHtml(f.explanation) };
+    });
+  } catch {
+    return data;
+  }
+}
+
 async function loadGallery() {
-  const start = $("start").value;
+  const latest = $("start").value;
+  const earliest = fmt(addDays(latest, -(DAYS - 1)));
   const gallery = $("gallery");
   gallery.innerHTML = "";
   $("error").textContent = "";
   $("loading").hidden = false;
   try {
-    const url = `https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&start_date=${start}&end_date=${fmt(addDays(start, DAYS - 1))}`;
+    const url = `https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&start_date=${earliest}&end_date=${latest}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`NASA API error (${res.status})`);
-    const data = (await res.json()).sort((a, b) => b.date.localeCompare(a.date));
-    data.forEach(entry => gallery.appendChild(createItem(entry)));
+    const sorted = (await res.json()).sort((a, b) => b.date.localeCompare(a.date));
+    const data = await replacePlaceholders(sorted, latest, earliest);
+    data.forEach(entry => { cache[entry.date] = entry; gallery.appendChild(createItem(entry)); });
   } catch (e) {
     $("error").textContent = e.message;
   } finally {
@@ -106,25 +122,84 @@ async function loadGallery() {
   }
 }
 
+const canHover = matchMedia("(hover: hover)").matches;
+const previewImgs = [...document.querySelectorAll("#preview img")];
+let activePreview = 0;
+let hideTimer;
+
+// One shared layer crossfades between pictures; the short hide delay keeps it up while moving between cards.
+function showPreview(src) {
+  clearTimeout(hideTimer);
+  const cur = previewImgs[activePreview];
+  if (cur.dataset.src !== src) {
+    const next = previewImgs[1 - activePreview];
+    next.src = src;
+    next.dataset.src = src;
+    next.classList.add("on");
+    cur.classList.remove("on");
+    activePreview = 1 - activePreview;
+  }
+  $("preview").classList.add("show");
+}
+
+function hidePreview(immediate) {
+  clearTimeout(hideTimer);
+  if (immediate) $("preview").classList.remove("show");
+  else hideTimer = setTimeout(() => $("preview").classList.remove("show"), 120);
+}
+
+const cache = {};
+
+async function fetchEntry(date) {
+  if (cache[date]) return cache[date];
+  const res = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&date=${date}`);
+  if (!res.ok) throw new Error(`NASA API error (${res.status})`);
+  const [entry] = await replacePlaceholders([await res.json()], date, date);
+  return (cache[date] = entry);
+}
+
+const hasPrevious = date => fmt(addDays(date, -1)) >= $("start").min;
+
+async function showNext() {
+  const date = fmt(addDays(current.date, -1));
+  if (!hasPrevious(current.date)) return;
+  $("next").disabled = true;
+  $("modal-error").textContent = "";
+  try {
+    showEntry(await fetchEntry(date));
+  } catch (e) {
+    $("modal-error").textContent = e.message;
+  } finally {
+    $("next").disabled = !hasPrevious(current.date);
+    if (!$("next").disabled) $("next").focus(); else $("back").focus();
+  }
+}
+
 function createItem(entry) {
-  const el = document.createElement("div");
+  const el = document.createElement("li");
   el.className = "item";
-  el.tabIndex = 0;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item-btn";
+  btn.setAttribute("aria-haspopup", "dialog");
   const thumb = document.createElement("div");
   thumb.className = "thumb";
   if (entry.media_type === "image") {
     const img = document.createElement("img");
-    img.src = entry.url;
-    img.alt = entry.title;
+    img.src = entry.hdurl || entry.url;
+    img.alt = entry.alt || entry.title;
+    img.width = 400;
+    img.height = 200;
     img.loading = "lazy";
+    img.decoding = "async";
     thumb.appendChild(img);
   } else if (entry.thumbnail_url) {
     const img = document.createElement("img");
     img.src = entry.thumbnail_url;
-    img.alt = entry.title + " (video)";
+    img.alt = entry.title + " (video thumbnail)";
     thumb.appendChild(img);
   } else {
-    thumb.innerHTML = '<div class="video-thumb">&#9654; Video</div>';
+    thumb.innerHTML = '<div class="video-thumb"><span aria-hidden="true">&#9654;</span> Video</div>';
   }
   const meta = document.createElement("div");
   meta.className = "meta";
@@ -133,19 +208,41 @@ function createItem(entry) {
   const t = document.createElement("time");
   t.textContent = entry.date;
   meta.append(h, t);
-  el.append(thumb, meta);
-  el.addEventListener("click", () => openModal(entry));
-  el.addEventListener("keydown", e => { if (e.key === "Enter") openModal(entry); });
+  btn.append(thumb, meta);
+  const pic = thumb.querySelector("img");
+  if (canHover && pic) {
+    const show = () => showPreview(pic.currentSrc || pic.src);
+    el.addEventListener("mouseenter", show);
+    el.addEventListener("focusin", e => { if (e.target.matches(":focus-visible")) show(); });
+    el.addEventListener("mouseleave", () => hidePreview());
+    el.addEventListener("focusout", () => hidePreview());
+  }
+  btn.addEventListener("click", () => openModal(entry, btn));
+  el.appendChild(btn);
   return el;
 }
 
-function openModal(entry) {
+let lastFocus = null;
+let current = null;
+
+function openModal(entry, trigger) {
+  lastFocus = trigger || document.activeElement;
+  hidePreview(true);
+  showEntry(entry);
+  $("modal").classList.add("open");
+  document.body.classList.add("modal-open");
+  $("close").focus();
+}
+
+function showEntry(entry) {
+  current = entry;
+  $("modal-error").textContent = "";
   const media = $("modal-media");
   media.innerHTML = "";
   if (entry.media_type === "image") {
     const img = document.createElement("img");
     img.src = entry.hdurl || entry.url;
-    img.alt = entry.title;
+    img.alt = entry.alt || entry.title;
     media.appendChild(img);
   } else {
     const embed = youtubeEmbed(entry.url);
@@ -160,7 +257,7 @@ function openModal(entry) {
       a.href = entry.url;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.textContent = "Watch video";
+      a.textContent = "Watch video (opens in a new tab)";
       a.style.color = "#9db8ff";
       media.appendChild(a);
     }
@@ -168,23 +265,49 @@ function openModal(entry) {
   $("modal-title").textContent = entry.title;
   $("modal-date").textContent = entry.date;
   $("modal-text").textContent = entry.explanation;
-  $("modal").classList.add("open");
+  $("modal").querySelector(".modal-box").scrollTop = 0;
+  $("next").disabled = !hasPrevious(entry.date);
 }
 
 function closeModal() {
   $("modal").classList.remove("open");
   $("modal-media").innerHTML = "";
+  document.body.classList.remove("modal-open");
+  if (lastFocus) lastFocus.focus();
 }
 
 $("close").addEventListener("click", closeModal);
+$("back").addEventListener("click", closeModal);
+$("next").addEventListener("click", showNext);
 $("modal").addEventListener("click", e => { if (e.target === $("modal")) closeModal(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
-$("load").addEventListener("click", () => $("start").value && loadGallery());
+document.addEventListener("keydown", e => {
+  const open = $("modal").classList.contains("open");
+  if (!open) return;
+  if (e.key === "Escape") return closeModal();
+  if (e.key === "Tab") {
+    const f = [...$("modal").querySelectorAll("a[href], button, iframe")];
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+$("controls").addEventListener("submit", e => { e.preventDefault(); if ($("start").value) loadGallery(); });
 
-$("fact").textContent = "Did you know? " + FACTS[Math.floor(Math.random() * FACTS.length)];
+async function showFact() {
+  try {
+    const res = await fetch("facts.json");
+    if (!res.ok) throw new Error(`Facts error (${res.status})`);
+    const facts = await res.json();
+    $("fact").textContent = "Did you know? " + facts[Math.floor(Math.random() * facts.length)];
+  } catch {
+    $("fact").hidden = true;
+  }
+}
+
+showFact();
 const today = new Date();
 $("start").max = fmt(today);
-$("start").value = fmt(addDays(fmt(today), -(DAYS - 1)));
+$("start").value = fmt(today);
 loadGallery();
 </script>
 </body>

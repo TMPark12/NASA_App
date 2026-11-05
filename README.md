@@ -19,5 +19,4 @@ Video entries from the API are detected and handled—either embedded or display
 
 A random “Did You Know?” fact displays on load
 
-Gallery images scale up smoothly on hover using CSS transitions or transforms
-
+Gallery images scale up smoothly on hover, with an expanded view capped at 75% of the screen

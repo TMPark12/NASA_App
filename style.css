@@ -14,9 +14,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 .item-btn { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .thumb { height: 200px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
+.item-btn:hover .thumb img, .item-btn:focus-visible .thumb img { transform: scale(1.05); }
 #preview { position: fixed; inset: 0; z-index: 5; background: rgba(0,0,0,0.92); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.25s ease, visibility 0s linear 0.25s; }
 #preview.show { opacity: 1; visibility: visible; transition: opacity 0.25s ease; }
-#preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.3s ease; }
+#preview img { position: absolute; top: 50%; left: 50%; width: 75vw; height: 75vh; object-fit: contain; transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.3s ease; }
 #preview img.on { opacity: 1; }
 .video-thumb { padding: 1rem; text-align: center; color: #9db8ff; }
 .item .meta { padding: 0.75rem; }
@@ -39,6 +40,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, iframe:focus-visible
 .modal-box a { color: #9db8ff; }
 @media (prefers-reduced-motion: reduce) {
   .thumb img, #preview, #preview img { transition: none !important; }
+  .item-btn:hover .thumb img, .item-btn:focus-visible .thumb img { transform: none; }
 }
 .modal-nav { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; }
 .nav-btn { padding: 0.6rem 1rem; font-size: 1rem; border-radius: 4px; border: 2px solid var(--nasa-blue); background: transparent; color: #fff; cursor: pointer; transition: background 0.2s ease, border-color 0.2s ease; }

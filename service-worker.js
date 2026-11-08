@@ -1,4 +1,4 @@
-const CACHE_NAME = "nasa-explorer-cache-v10";
+const CACHE_NAME = "nasa-explorer-cache-v11";
 const CACHE_PREFIX = "nasa-explorer-";
 const API_CACHE = "nasa-explorer-api";
 const APP_SHELL = [

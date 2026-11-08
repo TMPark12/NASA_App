@@ -17,7 +17,7 @@ Loading message appears while data is loading and is removed after the gallery d
 
 An accessible in-app notification confirms how many entries loaded and their date range. It appears when the gallery is loaded, not as a background or browser push notification.
 
-Video entries from the API are detected and handled—either embedded or displayed with a working link—in a way that fits seamlessly into the gallery or modal
+Video entries from the API are detected and handled—supported YouTube embeds are displayed in the modal, while other HTTP(S) videos have a link. Invalid video URLs show an unavailable message.
 
 A random “Did You Know?” fact displays on load
 

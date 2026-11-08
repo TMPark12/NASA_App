@@ -94,12 +94,21 @@ function updateEndDate() {
   $("end-date").textContent = latest ? formatUsDate(earliestDate(latest)) : "";
 }
 
-function youtubeEmbed(url) {
+function safeVideoUrl(url) {
   try {
     const u = new URL(url);
-    if (u.hostname.includes("youtube.com") && u.pathname.startsWith("/embed/")) return url;
-  } catch {}
+    if (u.protocol === "https:" || u.protocol === "http:") return u;
+  } catch (error) {
+    console.warn("Invalid video URL:", url, error);
+    return null;
+  }
+  console.warn("Unsupported video URL:", url);
   return null;
+}
+
+function youtubeEmbed(url) {
+  return url.protocol === "https:" && (url.hostname === "youtube.com" || url.hostname.endsWith(".youtube.com"))
+    && url.pathname.startsWith("/embed/") ? url.href : null;
 }
 
 const isPlaceholder = e => e.title === "NASA Science" || /nasa-logo/.test(e.url || "");
@@ -162,10 +171,12 @@ async function loadGallery() {
     if (!results.every(entry => entry && typeof entry.date === "string" && entry.date >= earliest && entry.date <= latest)) {
       throw new Error("NASA returned pictures outside the selected date range.");
     }
+    if (request !== galleryRequest) return;
     const sorted = results.sort((a, b) => b.date.localeCompare(a.date));
     const data = await replacePlaceholders(sorted, latest, earliest);
     if (request !== galleryRequest) return;
-    data.forEach(entry => { cache[entry.date] = entry; gallery.appendChild(createItem(entry)); });
+    const items = data.map(createItem);
+    data.forEach((entry, index) => { cache[entry.date] = entry; gallery.appendChild(items[index]); });
     const count = data.length;
     const dateRange = count === 1
       ? formatUsDate(data[0].date)
@@ -223,8 +234,11 @@ async function showNext() {
     }
   } finally {
     if (request === modalRequest) {
+      const restoreFocus = document.activeElement === document.body || document.activeElement === $("next");
       $("next").disabled = !hasPrevious(current.date);
-      if (!$("next").disabled) $("next").focus(); else $("back").focus();
+      if (restoreFocus) {
+        if (!$("next").disabled) $("next").focus(); else $("back").focus();
+      }
     }
   }
 }
@@ -240,7 +254,7 @@ function createItem(entry) {
   thumb.className = "thumb";
   if (entry.media_type === "image") {
     const img = document.createElement("img");
-    img.src = entry.hdurl || entry.url;
+    img.src = entry.url || entry.hdurl;
     img.alt = entry.alt || entry.title;
     img.width = 400;
     img.height = 200;
@@ -293,21 +307,24 @@ function showEntry(entry) {
     img.alt = entry.alt || entry.title;
     media.appendChild(img);
   } else {
-    const embed = youtubeEmbed(entry.url);
+    const url = safeVideoUrl(entry.url);
+    const embed = url && youtubeEmbed(url);
     if (embed) {
       const f = document.createElement("iframe");
       f.src = embed;
       f.allowFullscreen = true;
       f.title = entry.title;
       media.appendChild(f);
-    } else {
+    } else if (url) {
       const a = document.createElement("a");
-      a.href = entry.url;
+      a.href = url.href;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.textContent = "Watch video (opens in a new tab)";
       a.style.color = "#9db8ff";
       media.appendChild(a);
+    } else {
+      media.textContent = "The video link is unavailable.";
     }
   }
   $("modal-title").textContent = entry.title;

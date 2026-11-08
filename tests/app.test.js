@@ -29,6 +29,7 @@ test("date range is inclusive and respects the archive boundary", () => {
 
 test("gallery displays only the most recently requested date range", async () => {
   const pending = [];
+  let replacements = 0;
   const gallery = {
     items: [],
     set innerHTML(value) { this.items = []; },
@@ -44,7 +45,7 @@ test("gallery displays only the most recently requested date range", async () =>
   const context = vm.createContext({
     document: { getElementById: id => elements[id] },
     fetch: url => new Promise(resolve => pending.push({ url, resolve })),
-    replacePlaceholders: async data => data,
+    replacePlaceholders: async data => { replacements++; return data; },
     createItem: entry => entry,
     showRecoveryMessage() { throw new Error("Unexpected gallery error"); },
     cache: {},
@@ -65,6 +66,34 @@ test("gallery displays only the most recently requested date range", async () =>
   await first;
   assert.deepEqual(gallery.items.map(entry => entry.date), ["2025-01-03", "2024-12-26"]);
   assert.equal(elements["gallery-status"].textContent, "Loaded 2 astronomy entries for 12/26/2024 to 01/03/2025.");
+  assert.equal(elements.loading.hidden, true);
+  assert.equal(replacements, 1);
+});
+
+test("gallery does not display partial results when an item cannot be created", async () => {
+  const items = [];
+  let errorShown = false;
+  const elements = {
+    start: { value: "2024-03-01" },
+    gallery: { set innerHTML(value) { items.length = 0; }, appendChild(item) { items.push(item); } },
+    error: { replaceChildren() {} },
+    "gallery-status": { textContent: "" },
+    loading: { hidden: true }
+  };
+  const context = vm.createContext({
+    document: { getElementById: id => elements[id] },
+    fetch: async () => ({ ok: true, json: async () => [{ date: "2024-03-01" }, { date: "2024-02-29" }] }),
+    replacePlaceholders: async data => data,
+    createItem: entry => { if (entry.date === "2024-02-29") throw new Error("Bad item"); return entry; },
+    showRecoveryMessage: () => { errorShown = true; },
+    cache: {},
+    console: { error() {} }
+  });
+  vm.runInContext(section("const API_KEY", "function safeVideoUrl"), context);
+  vm.runInContext(section("let galleryRequest = 0;", "function showRecoveryMessage"), context);
+  await vm.runInContext("loadGallery()", context);
+  assert.deepEqual(items, []);
+  assert.equal(errorShown, true);
   assert.equal(elements.loading.hidden, true);
 });
 
@@ -125,6 +154,115 @@ test("late modal results do not update a closed or reopened dialog", async () =>
   vm.runInContext("modalRequest++", context);
   resolveEntry({ date: "2024-02-29" });
   await pending;
+});
+
+test("modal navigation does not steal focus while a picture is loading", async () => {
+  let resolveEntry;
+  let focused = false;
+  const document = { body: {}, activeElement: null };
+  const elements = {
+    next: { disabled: false, focus() { focused = true; } },
+    "modal-error": { textContent: "" },
+    back: { focus() { focused = true; } }
+  };
+  const context = vm.createContext({
+    document,
+    $: id => elements[id],
+    fmt: date => date.toISOString().slice(0, 10),
+    addDays: (date, offset) => new Date(Date.parse(`${date}T00:00:00Z`) + offset * 86400000),
+    fetchEntry: () => new Promise(resolve => { resolveEntry = resolve; }),
+    showEntry() {},
+    console
+  });
+  vm.runInContext("let current = { date: '2024-03-01' }; let modalRequest = 0; const MIN_DATE = '1995-06-16';", context);
+  vm.runInContext(section("const hasPrevious =", "function createItem"), context);
+  const pending = vm.runInContext("showNext()", context);
+  document.activeElement = elements.back;
+  resolveEntry({ date: "2024-02-29" });
+  await pending;
+  assert.equal(focused, false);
+  assert.equal(elements.next.disabled, false);
+});
+
+test("modal navigation restores focus when disabling Next left focus on the document", async () => {
+  const document = { body: {}, activeElement: null };
+  document.activeElement = document.body;
+  let focused = false;
+  const elements = {
+    next: { disabled: false, focus() { focused = true; } },
+    "modal-error": { textContent: "" },
+    back: { focus() { throw new Error("Unexpected focus"); } }
+  };
+  const context = vm.createContext({
+    document,
+    $: id => elements[id],
+    fmt: date => date.toISOString().slice(0, 10),
+    addDays: (date, offset) => new Date(Date.parse(`${date}T00:00:00Z`) + offset * 86400000),
+    fetchEntry: async () => ({ date: "2024-02-29" }),
+    showEntry() {},
+    console
+  });
+  vm.runInContext("let current = { date: '2024-03-01' }; let modalRequest = 0; const MIN_DATE = '1995-06-16';", context);
+  vm.runInContext(section("const hasPrevious =", "function createItem"), context);
+  await vm.runInContext("showNext()", context);
+  assert.equal(focused, true);
+});
+
+test("video links must use HTTP and only real YouTube hosts are embedded", () => {
+  const warnings = [];
+  const context = vm.createContext({ URL, console: { warn: (...args) => warnings.push(args) } });
+  vm.runInContext(section("function safeVideoUrl", "const isPlaceholder"), context);
+  context.input = "https://www.youtube.com/embed/abc";
+  assert.equal(vm.runInContext("youtubeEmbed(safeVideoUrl(input))", context), context.input);
+  context.input = "https://youtube.com.example.org/embed/abc";
+  assert.equal(vm.runInContext("youtubeEmbed(safeVideoUrl(input))", context), null);
+  context.input = "http://www.youtube.com/embed/abc";
+  assert.equal(vm.runInContext("youtubeEmbed(safeVideoUrl(input))", context), null);
+  for (const input of ["javascript:alert(1)", "not a URL"]) {
+    context.input = input;
+    assert.equal(vm.runInContext("safeVideoUrl(input)", context), null);
+  }
+  assert.equal(warnings.length, 2);
+});
+
+test("the picture dialog displays a message instead of an invalid video link", () => {
+  const media = { innerHTML: "", textContent: "", appendChild() { throw new Error("Unexpected video link"); } };
+  const elements = {
+    "modal-error": {}, "modal-media": media, "modal-title": {}, "modal-date": {}, "modal-text": {},
+    modal: { querySelector: () => ({}) }, next: {}
+  };
+  const warnings = [];
+  const context = vm.createContext({
+    URL,
+    document: { createElement() { throw new Error("Unexpected media element"); } },
+    $: id => elements[id],
+    hasPrevious: () => true,
+    console: { warn: (...args) => warnings.push(args) }
+  });
+  vm.runInContext("let current = null;", context);
+  vm.runInContext(section("function safeVideoUrl", "const isPlaceholder"), context);
+  vm.runInContext(section("function showEntry", "function closeModal"), context);
+  context.entry = { media_type: "video", url: "javascript:alert(1)", title: "Test", date: "2024-03-01" };
+  vm.runInContext("showEntry(entry)", context);
+  assert.equal(media.textContent, "The video link is unavailable.");
+  assert.equal(warnings.length, 1);
+});
+
+test("gallery thumbnails prefer the standard image over the high-resolution image", () => {
+  const nodes = [];
+  const context = vm.createContext({
+    document: {
+      createElement(tag) {
+        const node = { tag, children: [], appendChild(child) { this.children.push(child); }, append(...children) { this.children.push(...children); }, setAttribute() {}, addEventListener() {} };
+        nodes.push(node);
+        return node;
+      }
+    }
+  });
+  vm.runInContext(section("function createItem", "let lastFocus"), context);
+  context.entry = { media_type: "image", url: "https://example.com/standard.jpg", hdurl: "https://example.com/large.jpg", title: "Test", date: "2024-03-01" };
+  vm.runInContext("createItem(entry)", context);
+  assert.equal(nodes.find(node => node.tag === "img").src, context.entry.url);
 });
 
 function installHarness(navigator, { standalone = false, secure = true, logger = console } = {}) {
@@ -339,7 +477,7 @@ test("activation migrates old API responses without overwriting newer ones", asy
       clients: { async claim() {} }
     },
     caches: {
-      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v10", "nasa-explorer-api", "another-app"]; },
+      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v11", "nasa-explorer-api", "another-app"]; },
       async open(name) {
         if (name === "nasa-explorer-cache-v5") {
           return { async keys() { return [request]; }, async match() { return oldResponse; } };

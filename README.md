@@ -7,7 +7,7 @@ Display pictures in a rotating gallery
 
 Fetches up to 9 consecutive days of APOD data when a date is selected, using a valid API key. The date range is limited to NASA's archive, which starts June 16, 1995.
 
-Dynamically creates and displays 9 gallery items using API data, including image, title, and date
+Dynamically creates and displays up to 9 gallery items using API data, including image, title, and date
 
 Clicking an image opens a modal with full-size image, title, date, and explanation
 
@@ -19,8 +19,8 @@ Video entries from the API are detected and handled—either embedded or display
 
 A random “Did You Know?” fact displays on load
 
-Gallery images scale up smoothly on hover, with an expanded view capped at 75% of the screen
-
 The app can be installed as a PWA when served over HTTPS (GitHub Pages provides HTTPS). Its app shell is cached for offline loading, and successful NASA APOD API responses are cached for network-first fallback.
 
 Use **Save Me For Later** to open the install prompt when available, or follow the browser's installation instructions. The button remains available in the installed app and reports that it is already installed. A browser tab cannot reliably determine whether the app was installed previously.
+
+Run the regression tests with `node --test tests/app.test.js`.

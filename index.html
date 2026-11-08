@@ -34,10 +34,10 @@
   <aside id="fact" aria-label="Did you know?"></aside>
   <div id="loading" role="status" hidden>Beaming data in, please wait...</div>
   <div id="error" class="error" role="alert"></div>
-  <ul id="gallery" aria-label="Astronomy pictures of the day"></ul>
+  <ul id="gallery" aria-label="Astronomy pictures of the day" tabindex="-1"></ul>
 </main>
 
-<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-text">
+<div id="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modal-title" aria-describedby="modal-text">
   <div class="modal-box">
     <button type="button" id="close" aria-label="Close dialog"><span aria-hidden="true">&times;</span></button>
     <div id="modal-media"></div>
@@ -104,7 +104,7 @@ async function fetchScienceFeed(latest, earliest) {
   while (page >= 1 && !seen.has(page) && seen.size < 8) {
     seen.add(page);
     const res = await fetch(`${SCIENCE_FEED}?per_page=${FEED_PAGE_SIZE}&page=${page}`);
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`NASA Science feed error (${res.status})`);
     const items = await res.json();
     if (!items.length) break;
     items.forEach(e => { byDate[e.date] = e; });
@@ -124,7 +124,8 @@ async function replacePlaceholders(data, latest, earliest) {
       if (!isPlaceholder(e) || !f || !f.hdurl) return e;
       return { ...e, title: f.title, media_type: f.media_type, url: f.url, hdurl: f.hdurl, alt: f.alt, explanation: stripHtml(f.explanation) };
     });
-  } catch {
+  } catch (error) {
+    console.warn("Unable to replace placeholder pictures:", error);
     return data;
   }
 }
@@ -182,7 +183,7 @@ async function fetchEntry(date) {
   const res = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&date=${date}`);
   if (!res.ok) throw new Error("Unable to load astronomy picture.");
   const result = await res.json();
-  if (!result || !result.date) throw new Error("No astronomy picture was found for that date.");
+  if (!result || result.date !== date) throw new Error("NASA returned an unexpected astronomy picture date.");
   const [entry] = await replacePlaceholders([result], date, date);
   return (cache[date] = entry);
 }
@@ -192,15 +193,22 @@ const hasPrevious = date => fmt(addDays(date, -1)) >= MIN_DATE;
 async function showNext() {
   const date = fmt(addDays(current.date, -1));
   if (!hasPrevious(current.date)) return;
+  const request = ++modalRequest;
   $("next").disabled = true;
   $("modal-error").textContent = "";
   try {
-    showEntry(await fetchEntry(date));
-  } catch {
-    showRecoveryMessage($("modal-error"), "Sorry, we couldn't find information for that date.");
+    const entry = await fetchEntry(date);
+    if (request === modalRequest) showEntry(entry);
+  } catch (error) {
+    if (request === modalRequest) {
+      console.error("Unable to load astronomy picture:", error);
+      showRecoveryMessage($("modal-error"), "Sorry, we couldn't find information for that date.");
+    }
   } finally {
-    $("next").disabled = !hasPrevious(current.date);
-    if (!$("next").disabled) $("next").focus(); else $("back").focus();
+    if (request === modalRequest) {
+      $("next").disabled = !hasPrevious(current.date);
+      if (!$("next").disabled) $("next").focus(); else $("back").focus();
+    }
   }
 }
 
@@ -245,11 +253,14 @@ function createItem(entry) {
 
 let lastFocus = null;
 let current = null;
+let modalRequest = 0;
 
 function openModal(entry, trigger) {
+  modalRequest++;
   lastFocus = trigger || document.activeElement;
   showEntry(entry);
   $("modal").classList.add("open");
+  $("modal").setAttribute("aria-hidden", "false");
   document.body.classList.add("modal-open");
   $("close").focus();
 }
@@ -290,7 +301,9 @@ function showEntry(entry) {
 }
 
 function closeModal() {
+  modalRequest++;
   $("modal").classList.remove("open");
+  $("modal").setAttribute("aria-hidden", "true");
   $("modal-media").innerHTML = "";
   document.body.classList.remove("modal-open");
   if (lastFocus) lastFocus.focus();
@@ -305,7 +318,7 @@ document.addEventListener("keydown", e => {
   if (!open) return;
   if (e.key === "Escape") return closeModal();
   if (e.key === "Tab") {
-    const f = [...$("modal").querySelectorAll("a[href], button, iframe")];
+    const f = [...$("modal").querySelectorAll("a[href], button:not(:disabled), iframe")];
     const first = f[0], last = f[f.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
@@ -318,14 +331,14 @@ $("start").addEventListener("input", () => {
   $("loading").hidden = true;
   updateEndDate();
 });
-$("start").addEventListener("change", () => {
+function loadSelectedDate() {
   $("start").max = fmt(new Date());
   if ($("controls").reportValidity()) loadGallery();
-});
+}
+$("start").addEventListener("change", loadSelectedDate);
 $("controls").addEventListener("submit", e => {
   e.preventDefault();
-  $("start").max = fmt(new Date());
-  if ($("controls").reportValidity()) loadGallery();
+  loadSelectedDate();
 });
 
 let installPrompt = null;
@@ -380,7 +393,8 @@ async function showFact() {
     if (!res.ok) throw new Error(`Facts error (${res.status})`);
     const facts = await res.json();
     $("fact").textContent = "Did you know? " + facts[Math.floor(Math.random() * facts.length)];
-  } catch {
+  } catch (error) {
+    console.error("Unable to load astronomy facts:", error);
     $("fact").hidden = true;
   }
 }

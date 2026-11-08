@@ -47,6 +47,7 @@ test("gallery displays only the most recently requested date range", async () =>
     fetch: url => new Promise(resolve => pending.push({ url, resolve })),
     replacePlaceholders: async data => { replacements++; return data; },
     createItem: entry => entry,
+    isPlaceholder: () => false,
     showRecoveryMessage() { throw new Error("Unexpected gallery error"); },
     cache: {},
     console
@@ -70,6 +71,28 @@ test("gallery displays only the most recently requested date range", async () =>
   assert.equal(replacements, 1);
 });
 
+test("NASA Science replacement uses the actual image instead of the article URL", async () => {
+  const context = vm.createContext({
+    fetchScienceFeed: async () => ({
+      "2026-11-08": {
+        title: "Meteor", media_type: "image",
+        url: "https://science.nasa.gov/image-article/meteor/",
+        hdurl: "https://assets.science.nasa.gov/meteor.jpg",
+        explanation: "<p>Example</p>"
+      }
+    }),
+    stripHtml: () => "Example",
+    console
+  });
+  vm.runInContext(section("const isPlaceholder", "const stripHtml"), context);
+  vm.runInContext(section("async function replacePlaceholders", "let pictureFailureReported"), context);
+  context.input = [{ date: "2026-11-08", title: "NASA Science", url: "https://example.com/nasa-logo.png" }];
+  const result = await vm.runInContext("replacePlaceholders(input, '2026-11-08', '2026-11-08')", context);
+  assert.equal(result[0].url, "https://assets.science.nasa.gov/meteor.jpg");
+  assert.equal(result[0].hdurl, result[0].url);
+  assert.equal(result[0].title, "Meteor");
+});
+
 test("gallery does not display partial results when an item cannot be created", async () => {
   const items = [];
   let errorShown = false;
@@ -86,6 +109,7 @@ test("gallery does not display partial results when an item cannot be created", 
     replacePlaceholders: async data => data,
     createItem: entry => { if (entry.date === "2024-02-29") throw new Error("Bad item"); return entry; },
     showRecoveryMessage: () => { errorShown = true; },
+    showPictureLoadFailure() {},
     cache: {},
     console: { error() {} }
   });
@@ -112,7 +136,9 @@ test("gallery notifications handle one entry and clear on a failed reload", asyn
     fetch: () => new Promise(resolve => pending.push(resolve)),
     replacePlaceholders: async data => data,
     createItem: entry => entry,
+    isPlaceholder: () => false,
     showRecoveryMessage: (container, message) => errors.push(message),
+    showPictureLoadFailure() { errors.push("popup"); },
     cache: {},
     console: { error() {} }
   });
@@ -127,7 +153,7 @@ test("gallery notifications handle one entry and clear on a failed reload", asyn
   pending[1]({ ok: false });
   await second;
   assert.equal(elements["gallery-status"].textContent, "");
-  assert.equal(errors.length, 1);
+  assert.equal(errors.length, 2);
   assert.equal(elements.loading.hidden, true);
 });
 
@@ -163,6 +189,7 @@ test("modal navigation does not steal focus while a picture is loading", async (
   const elements = {
     next: { disabled: false, focus() { focused = true; } },
     "modal-error": { textContent: "" },
+    "picture-error-dialog": { open: false },
     back: { focus() { focused = true; } }
   };
   const context = vm.createContext({
@@ -191,6 +218,7 @@ test("modal navigation restores focus when disabling Next left focus on the docu
   const elements = {
     next: { disabled: false, focus() { focused = true; } },
     "modal-error": { textContent: "" },
+    "picture-error-dialog": { open: false },
     back: { focus() { throw new Error("Unexpected focus"); } }
   };
   const context = vm.createContext({
@@ -259,13 +287,69 @@ test("gallery thumbnails prefer the standard image over the high-resolution imag
       }
     }
   });
-  vm.runInContext(section("function createItem", "let lastFocus"), context);
+  vm.runInContext(section("function loadPicture", "let lastFocus"), context);
   context.entry = { media_type: "image", url: "https://example.com/standard.jpg", hdurl: "https://example.com/large.jpg", title: "Test", date: "2024-03-01" };
   vm.runInContext("createItem(entry)", context);
   assert.equal(nodes.find(node => node.tag === "img").src, context.entry.url);
 });
 
-function installHarness(navigator, { standalone = false, secure = true, logger = console } = {}) {
+test("failed pictures try the alternate image before offering a refresh", () => {
+  const errors = [];
+  let failures = 0;
+  const context = vm.createContext({
+    console: { error: (...args) => errors.push(args) },
+    showPictureLoadFailure: () => { failures++; },
+    queueMicrotask
+  });
+  vm.runInContext(section("function loadPicture", "function createItem"), context);
+  const img = {
+    isConnected: true,
+    addEventListener(name, callback) { this[name] = callback; }
+  };
+  context.img = img;
+  vm.runInContext("loadPicture(img, 'standard.jpg', 'large.jpg')", context);
+  assert.equal(img.src, "standard.jpg");
+  img.error();
+  assert.equal(img.src, "large.jpg");
+  assert.equal(failures, 0);
+  img.error();
+  assert.equal(failures, 1);
+  assert.match(img.alt, /unavailable/);
+  assert.equal(errors.length, 1);
+  img.isConnected = false;
+  img.error();
+  assert.equal(failures, 1);
+});
+
+test("missing image URLs offer a refresh after the image is attached", async () => {
+  let failures = 0;
+  const context = vm.createContext({
+    console: { error() {} },
+    showPictureLoadFailure: () => { failures++; },
+    queueMicrotask
+  });
+  vm.runInContext(section("function loadPicture", "function createItem"), context);
+  context.img = { isConnected: true, addEventListener() {} };
+  vm.runInContext("loadPicture(img, '', '')", context);
+  await new Promise(resolve => queueMicrotask(resolve));
+  assert.equal(failures, 1);
+});
+
+test("picture failure dialog waits for the install dialog and is offered only once", () => {
+  let opens = 0;
+  const install = { open: true };
+  const picture = { showModal() { opens++; } };
+  const context = vm.createContext({ $: id => id === "install-dialog" ? install : picture });
+  vm.runInContext(section("let pictureFailureReported", "let galleryRequest"), context);
+  vm.runInContext("showPictureLoadFailure()", context);
+  assert.equal(opens, 0);
+  assert.equal(vm.runInContext("pictureFailurePending", context), true);
+  install.open = false;
+  vm.runInContext("showPictureLoadFailure(); showPictureLoadFailure()", context);
+  assert.equal(opens, 1);
+});
+
+function installHarness(navigator, { standalone = false, secure = true, logger = console, storage = new Map() } = {}) {
   const windowHandlers = {};
   const status = { textContent: "" };
   const element = () => ({
@@ -277,20 +361,29 @@ function installHarness(navigator, { standalone = false, secure = true, logger =
   const confirm = element();
   const dismiss = element();
   const dialog = {
+    ...element(),
     open: false,
     showModal() { this.open = true; },
-    close() { this.open = false; }
+    close() { this.open = false; this.handlers.close(); }
   };
   const elements = {
     "install-app": button,
     "install-dialog": dialog,
     "install-confirm": confirm,
     "install-dismiss": dismiss,
-    "install-status": status
+    "install-status": status,
+    "picture-refresh": element(),
+    "picture-dismiss": element()
   };
   const context = vm.createContext({
     $: id => elements[id],
     navigator,
+    pictureFailurePending: false,
+    showPictureLoadFailure() {},
+    localStorage: {
+      getItem: key => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, value)
+    },
     window: {
       isSecureContext: secure,
       matchMedia: () => ({ matches: standalone }),
@@ -352,6 +445,27 @@ test("the install dialog can be dismissed and reopened, but is suppressed in the
   installed.button.handlers.click();
   assert.match(installed.status.textContent, /already installed/);
   assert.equal(installed.confirm.hidden, true);
+});
+
+test("automatic install offer is remembered across visits but can be reopened manually", () => {
+  const storage = new Map();
+  const first = installHarness({ userAgent: "Chrome" }, { storage });
+  assert.equal(first.dialog.open, true);
+  first.dismiss.handlers.click();
+  const returning = installHarness({ userAgent: "Chrome" }, { storage });
+  assert.equal(returning.dialog.open, false);
+  returning.button.handlers.click();
+  assert.equal(returning.dialog.open, true);
+});
+
+test("install remains available when browser storage is blocked", () => {
+  const warnings = [];
+  const storage = { get() { throw new Error("storage blocked"); } };
+  const app = installHarness({ userAgent: "Chrome" }, { storage, logger: { warn: (...args) => warnings.push(args) } });
+  assert.equal(app.dialog.open, false);
+  assert.equal(warnings.length, 1);
+  app.button.handlers.click();
+  assert.equal(app.dialog.open, true);
 });
 
 test("desktop installation gives browser-specific and secure-context instructions", async () => {
@@ -477,7 +591,7 @@ test("activation migrates old API responses without overwriting newer ones", asy
       clients: { async claim() {} }
     },
     caches: {
-      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v11", "nasa-explorer-api", "another-app"]; },
+      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v12", "nasa-explorer-api", "another-app"]; },
       async open(name) {
         if (name === "nasa-explorer-cache-v5") {
           return { async keys() { return [request]; }, async match() { return oldResponse; } };

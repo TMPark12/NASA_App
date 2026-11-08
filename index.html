@@ -48,6 +48,15 @@
   </div>
 </dialog>
 
+<dialog id="picture-error-dialog" aria-labelledby="picture-error-title" aria-describedby="picture-error-description">
+  <h2 id="picture-error-title">Pictures couldn't be loaded</h2>
+  <p id="picture-error-description">Some astronomy pictures could not be loaded. Check your connection and refresh the page to try again.</p>
+  <div class="install-actions">
+    <button type="button" id="picture-refresh" class="install-button">Refresh page</button>
+    <button type="button" id="picture-dismiss" class="nav-btn">Not now</button>
+  </div>
+</dialog>
+
 <div id="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modal-title" aria-describedby="modal-text">
   <div class="modal-box">
     <button type="button" id="close" aria-label="Close dialog"><span aria-hidden="true">&times;</span></button>
@@ -142,12 +151,26 @@ async function replacePlaceholders(data, latest, earliest) {
     return data.map(e => {
       const f = feed[e.date];
       if (!isPlaceholder(e) || !f || !f.hdurl) return e;
-      return { ...e, title: f.title, media_type: f.media_type, url: f.url, hdurl: f.hdurl, alt: f.alt, explanation: stripHtml(f.explanation) };
+      return { ...e, title: f.title, media_type: f.media_type, url: f.media_type === "image" ? f.hdurl : f.url, hdurl: f.hdurl, alt: f.alt, explanation: stripHtml(f.explanation) };
     });
   } catch (error) {
     console.warn("Unable to replace placeholder pictures:", error);
     return data;
   }
+}
+
+let pictureFailureReported = false;
+let pictureFailurePending = false;
+
+function showPictureLoadFailure() {
+  if (pictureFailureReported) return;
+  if ($("install-dialog").open) {
+    pictureFailurePending = true;
+    return;
+  }
+  pictureFailurePending = false;
+  pictureFailureReported = true;
+  $("picture-error-dialog").showModal();
 }
 
 let galleryRequest = 0;
@@ -156,6 +179,8 @@ async function loadGallery() {
   const latest = $("start").value;
   if (!latest) return;
   const request = ++galleryRequest;
+  pictureFailureReported = false;
+  pictureFailurePending = false;
   const earliest = earliestDate(latest);
   const gallery = $("gallery");
   gallery.innerHTML = "";
@@ -182,10 +207,16 @@ async function loadGallery() {
       ? formatUsDate(data[0].date)
       : `${formatUsDate(data[data.length - 1].date)} to ${formatUsDate(data[0].date)}`;
     $("gallery-status").textContent = `Loaded ${count} astronomy ${count === 1 ? "entry" : "entries"} for ${dateRange}.`;
+    if (data.some(isPlaceholder)) {
+      console.warn("Some NASA pictures were returned as placeholders.");
+      showRecoveryMessage($("error"), "Some astronomy pictures could not be loaded.");
+      showPictureLoadFailure();
+    }
   } catch (error) {
     if (request === galleryRequest) {
       console.error("Unable to load astronomy pictures:", error);
       showRecoveryMessage($("error"), "Sorry, we couldn't find the astronomy pictures for those dates.");
+      showPictureLoadFailure();
     }
   } finally {
     if (request === galleryRequest) $("loading").hidden = true;
@@ -231,16 +262,36 @@ async function showNext() {
     if (request === modalRequest) {
       console.error("Unable to load astronomy picture:", error);
       showRecoveryMessage($("modal-error"), "Sorry, we couldn't find information for that date.");
+      showPictureLoadFailure();
     }
   } finally {
     if (request === modalRequest) {
       const restoreFocus = document.activeElement === document.body || document.activeElement === $("next");
       $("next").disabled = !hasPrevious(current.date);
-      if (restoreFocus) {
+      if (restoreFocus && !$("picture-error-dialog").open) {
         if (!$("next").disabled) $("next").focus(); else $("back").focus();
       }
     }
   }
+}
+
+function loadPicture(img, primary, fallback) {
+  const firstSource = primary || fallback;
+  let triedFallback = false;
+  function handleError() {
+    if (!img.isConnected) return;
+    if (!triedFallback && fallback && fallback !== firstSource) {
+      triedFallback = true;
+      img.src = fallback;
+      return;
+    }
+    console.error("Unable to load astronomy image:", img.src);
+    img.alt = "Astronomy picture unavailable. Refresh the page to try again.";
+    showPictureLoadFailure();
+  }
+  img.addEventListener("error", handleError);
+  if (firstSource) img.src = firstSource;
+  else queueMicrotask(handleError);
 }
 
 function createItem(entry) {
@@ -254,7 +305,7 @@ function createItem(entry) {
   thumb.className = "thumb";
   if (entry.media_type === "image") {
     const img = document.createElement("img");
-    img.src = entry.url || entry.hdurl;
+    loadPicture(img, entry.url, entry.hdurl);
     img.alt = entry.alt || entry.title;
     img.width = 400;
     img.height = 200;
@@ -303,7 +354,7 @@ function showEntry(entry) {
   media.innerHTML = "";
   if (entry.media_type === "image") {
     const img = document.createElement("img");
-    img.src = entry.hdurl || entry.url;
+    loadPicture(img, entry.hdurl, entry.url);
     img.alt = entry.alt || entry.title;
     media.appendChild(img);
   } else {
@@ -348,6 +399,7 @@ $("back").addEventListener("click", closeModal);
 $("next").addEventListener("click", showNext);
 $("modal").addEventListener("click", e => { if (e.target === $("modal")) closeModal(); });
 document.addEventListener("keydown", e => {
+  if ($("picture-error-dialog").open) return;
   const open = $("modal").classList.contains("open");
   if (!open) return;
   if (e.key === "Escape") return closeModal();
@@ -360,6 +412,7 @@ document.addEventListener("keydown", e => {
 });
 $("start").addEventListener("input", () => {
   galleryRequest++;
+  pictureFailurePending = false;
   $("gallery").replaceChildren();
   $("error").replaceChildren();
   $("gallery-status").textContent = "";
@@ -378,6 +431,7 @@ $("controls").addEventListener("submit", e => {
 
 let installPrompt = null;
 let installedThisSession = false;
+const INSTALL_OFFER_KEY = "nasa-explorer-install-offered";
 const installButton = $("install-app");
 const installDialog = $("install-dialog");
 const installConfirm = $("install-confirm");
@@ -407,6 +461,17 @@ function openInstallDialog() {
   if (!installDialog.open) installDialog.showModal();
 }
 
+function shouldOfferInstall() {
+  try {
+    if (localStorage.getItem(INSTALL_OFFER_KEY)) return false;
+    localStorage.setItem(INSTALL_OFFER_KEY, "yes");
+    return true;
+  } catch (error) {
+    console.warn("Unable to remember the installation offer:", error);
+    return false;
+  }
+}
+
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
   installPrompt = event;
@@ -423,6 +488,11 @@ window.addEventListener("appinstalled", () => {
 
 installButton.addEventListener("click", openInstallDialog);
 installDismiss.addEventListener("click", () => installDialog.close());
+installDialog.addEventListener("close", () => {
+  if (pictureFailurePending) showPictureLoadFailure();
+});
+$("picture-refresh").addEventListener("click", () => window.location.reload());
+$("picture-dismiss").addEventListener("click", () => $("picture-error-dialog").close());
 installConfirm.addEventListener("click", async () => {
   installStatus.textContent = "";
   if (isRunningAsApp() || installedThisSession) {
@@ -450,7 +520,7 @@ installConfirm.addEventListener("click", async () => {
   }
 });
 
-if (!isRunningAsApp()) openInstallDialog();
+if (!isRunningAsApp() && shouldOfferInstall()) openInstallDialog();
 
 async function showFact() {
   try {

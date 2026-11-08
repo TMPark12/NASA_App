@@ -1,4 +1,4 @@
-const CACHE_NAME = "nasa-explorer-cache-v7";
+const CACHE_NAME = "nasa-explorer-cache-v9";
 const CACHE_PREFIX = "nasa-explorer-";
 const API_CACHE = "nasa-explorer-api";
 const APP_SHELL = [
@@ -6,7 +6,10 @@ const APP_SHELL = [
   "./style.css",
   "./manifest.json",
   "./facts.json",
-  "./icon.svg"
+  "./icon.svg",
+  "./icon-180.png",
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
 self.addEventListener("install", event => {

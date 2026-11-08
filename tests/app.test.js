@@ -38,6 +38,7 @@ test("gallery displays only the most recently requested date range", async () =>
     start: { value: "2024-03-01" },
     gallery,
     error: { replaceChildren() {} },
+    "gallery-status": { textContent: "" },
     loading: { hidden: true }
   };
   const context = vm.createContext({
@@ -59,9 +60,45 @@ test("gallery displays only the most recently requested date range", async () =>
   const response = dates => ({ ok: true, json: async () => dates.map(date => ({ date })) });
   pending[1].resolve(response(["2024-12-26", "2025-01-03"]));
   await second;
+  assert.equal(elements["gallery-status"].textContent, "Loaded 2 astronomy entries for 12/26/2024 to 01/03/2025.");
   pending[0].resolve(response(["2024-03-01"]));
   await first;
   assert.deepEqual(gallery.items.map(entry => entry.date), ["2025-01-03", "2024-12-26"]);
+  assert.equal(elements["gallery-status"].textContent, "Loaded 2 astronomy entries for 12/26/2024 to 01/03/2025.");
+  assert.equal(elements.loading.hidden, true);
+});
+
+test("gallery notifications handle one entry and clear on a failed reload", async () => {
+  const pending = [];
+  const elements = {
+    start: { value: "1995-06-16" },
+    gallery: { set innerHTML(value) {}, appendChild() {} },
+    error: { replaceChildren() {} },
+    "gallery-status": { textContent: "" },
+    loading: { hidden: true }
+  };
+  const errors = [];
+  const context = vm.createContext({
+    document: { getElementById: id => elements[id] },
+    fetch: () => new Promise(resolve => pending.push(resolve)),
+    replacePlaceholders: async data => data,
+    createItem: entry => entry,
+    showRecoveryMessage: (container, message) => errors.push(message),
+    cache: {},
+    console: { error() {} }
+  });
+  vm.runInContext(section("const API_KEY", "function youtubeEmbed"), context);
+  vm.runInContext(section("let galleryRequest = 0;", "function showRecoveryMessage"), context);
+  const first = vm.runInContext("loadGallery()", context);
+  pending[0]({ ok: true, json: async () => [{ date: "1995-06-16" }] });
+  await first;
+  assert.equal(elements["gallery-status"].textContent, "Loaded 1 astronomy entry for 06/16/1995.");
+  const second = vm.runInContext("loadGallery()", context);
+  assert.equal(elements["gallery-status"].textContent, "");
+  pending[1]({ ok: false });
+  await second;
+  assert.equal(elements["gallery-status"].textContent, "");
+  assert.equal(errors.length, 1);
   assert.equal(elements.loading.hidden, true);
 });
 
@@ -88,6 +125,70 @@ test("late modal results do not update a closed or reopened dialog", async () =>
   vm.runInContext("modalRequest++", context);
   resolveEntry({ date: "2024-02-29" });
   await pending;
+});
+
+function installHarness(navigator) {
+  const windowHandlers = {};
+  const buttonHandlers = {};
+  const status = { textContent: "" };
+  const button = { addEventListener(name, callback) { buttonHandlers[name] = callback; } };
+  const context = vm.createContext({
+    $: id => id === "install-app" ? button : status,
+    navigator,
+    window: {
+      matchMedia: () => ({ matches: false }),
+      addEventListener(name, callback) { windowHandlers[name] = callback; }
+    },
+    console
+  });
+  vm.runInContext(section("let installPrompt = null;", "async function showFact()"), context);
+  return { windowHandlers, buttonHandlers, status };
+}
+
+test("mobile install instructions cover iPhone, desktop-mode iPad and Android", async () => {
+  for (const navigator of [
+    { userAgent: "iPhone", platform: "iPhone" },
+    { userAgent: "Macintosh", platform: "MacIntel", maxTouchPoints: 5 }
+  ]) {
+    const app = installHarness(navigator);
+    await app.buttonHandlers.click();
+    assert.match(app.status.textContent, /Safari.*Share.*Add to Home Screen.*Add/);
+  }
+  const android = installHarness({ userAgent: "Android", platform: "Linux" });
+  await android.buttonHandlers.click();
+  assert.match(android.status.textContent, /Install app or Add to Home screen/);
+});
+
+test("install button opens the Android prompt and reports installation", async () => {
+  const app = installHarness({ userAgent: "Android", platform: "Linux" });
+  let prevented = false;
+  let prompted = false;
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() { prevented = true; },
+    async prompt() { prompted = true; },
+    userChoice: Promise.resolve({ outcome: "accepted" })
+  });
+  await app.buttonHandlers.click();
+  assert.equal(prevented, true);
+  assert.equal(prompted, true);
+  assert.match(app.status.textContent, /Installation accepted/);
+  app.windowHandlers.appinstalled();
+  await app.buttonHandlers.click();
+  assert.match(app.status.textContent, /already installed/);
+});
+
+test("mobile home-screen icons are correctly sized PNGs and included in the app shell", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+  for (const size of [180, 192, 512]) {
+    const name = `icon-${size}.png`;
+    const image = fs.readFileSync(path.join(root, name));
+    assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(image.readUInt32BE(16), size);
+    assert.equal(image.readUInt32BE(20), size);
+    assert.ok(worker.includes(`"./${name}"`));
+    if (size === 180) assert.match(html, /rel="apple-touch-icon" sizes="180x180" href="icon-180\.png"/);
+    else assert.ok(manifest.icons.some(icon => icon.src === `./${name}` && icon.sizes === `${size}x${size}` && icon.type === "image/png"));
+  }
 });
 
 test("a successful API response survives a cache write failure", async () => {
@@ -140,7 +241,7 @@ test("activation migrates old API responses without overwriting newer ones", asy
       clients: { async claim() {} }
     },
     caches: {
-      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v7", "nasa-explorer-api", "another-app"]; },
+      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v9", "nasa-explorer-api", "another-app"]; },
       async open(name) {
         if (name === "nasa-explorer-cache-v5") {
           return { async keys() { return [request]; }, async match() { return oldResponse; } };

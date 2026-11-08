@@ -15,12 +15,16 @@ Uses colors and fonts to align with NASA’s design
 
 Loading message appears while data is loading and is removed after the gallery displays
 
+An accessible in-app notification confirms how many entries loaded and their date range. It appears when the gallery is loaded, not as a background or browser push notification.
+
 Video entries from the API are detected and handled—either embedded or displayed with a working link—in a way that fits seamlessly into the gallery or modal
 
 A random “Did You Know?” fact displays on load
 
 The app can be installed as a PWA when served over HTTPS (GitHub Pages provides HTTPS). Its app shell is cached for offline loading, and successful NASA APOD API responses are cached for network-first fallback.
 
-Use **Save Me For Later** to open the install prompt when available, or follow the browser's installation instructions. The button remains available in the installed app and reports that it is already installed. A browser tab cannot reliably determine whether the app was installed previously.
+On Android, tap **Save Me For Later** and accept the install prompt. If no prompt appears, use the browser menu's **Install app** or **Add to Home screen** option. On iPhone or iPad, open the site in Safari, tap **Save Me For Later** for instructions, then tap **Share**, **Add to Home Screen**, and **Add**. iOS does not allow the site to open the install prompt itself. The app includes home-screen icons for both platforms. Installation requires a supported browser and HTTPS (or localhost).
+
+Controls are sized for touch, and the gallery and dialog adapt to narrow screens. The install button remains available in the installed app and reports that it is already installed. A browser tab cannot reliably determine whether the app was installed previously.
 
 Run the regression tests with `node --test tests/app.test.js`.

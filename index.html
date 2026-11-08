@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0b3d91">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
 <link rel="stylesheet" href="style.css">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -34,6 +35,7 @@
   <aside id="fact" aria-label="Did you know?"></aside>
   <div id="loading" role="status" hidden>Beaming data in, please wait...</div>
   <div id="error" class="error" role="alert"></div>
+  <p id="gallery-status" role="status" aria-live="polite"></p>
   <ul id="gallery" aria-label="Astronomy pictures of the day" tabindex="-1"></ul>
 </main>
 
@@ -140,6 +142,7 @@ async function loadGallery() {
   const gallery = $("gallery");
   gallery.innerHTML = "";
   $("error").replaceChildren();
+  $("gallery-status").textContent = "";
   $("loading").hidden = false;
   try {
     const url = `https://api.nasa.gov/planetary/apod?api_key=${API_KEY}&start_date=${earliest}&end_date=${latest}`;
@@ -154,6 +157,11 @@ async function loadGallery() {
     const data = await replacePlaceholders(sorted, latest, earliest);
     if (request !== galleryRequest) return;
     data.forEach(entry => { cache[entry.date] = entry; gallery.appendChild(createItem(entry)); });
+    const count = data.length;
+    const dateRange = count === 1
+      ? formatUsDate(data[0].date)
+      : `${formatUsDate(data[data.length - 1].date)} to ${formatUsDate(data[0].date)}`;
+    $("gallery-status").textContent = `Loaded ${count} astronomy ${count === 1 ? "entry" : "entries"} for ${dateRange}.`;
   } catch (error) {
     if (request === galleryRequest) {
       console.error("Unable to load astronomy pictures:", error);
@@ -328,6 +336,7 @@ $("start").addEventListener("input", () => {
   galleryRequest++;
   $("gallery").replaceChildren();
   $("error").replaceChildren();
+  $("gallery-status").textContent = "";
   $("loading").hidden = true;
   updateEndDate();
 });
@@ -348,6 +357,8 @@ const installStatus = $("install-status");
 const appDisplayModes = ["standalone", "minimal-ui", "fullscreen"]
   .map(mode => window.matchMedia(`(display-mode: ${mode})`));
 const isRunningAsApp = () => navigator.standalone === true || appDisplayModes.some(mode => mode.matches);
+const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
@@ -367,9 +378,11 @@ installButton.addEventListener("click", async () => {
     return;
   }
   if (!installPrompt) {
-    installStatus.textContent = /iPad|iPhone|iPod/.test(navigator.userAgent)
-      ? "To add NASA Explorer, tap Share, then choose Add to Home Screen."
-      : "To add NASA Explorer, use your browser's Install or Add to Home Screen option.";
+    installStatus.textContent = isAppleMobile()
+      ? "On iPhone or iPad, open this page in Safari, tap Share, choose Add to Home Screen, then tap Add."
+      : /Android/.test(navigator.userAgent)
+        ? "In your browser menu, choose Install app or Add to Home screen, then confirm."
+        : "To add NASA Explorer, use your browser's Install or Add to Home Screen option.";
     return;
   }
 
@@ -380,6 +393,8 @@ installButton.addEventListener("click", async () => {
     const { outcome } = await prompt.userChoice;
     if (outcome === "accepted") {
       if (!installedThisSession) installStatus.textContent = "Installation accepted. Follow your browser's instructions to finish.";
+    } else {
+      installStatus.textContent = "Installation was canceled. Use your browser's Install or Add to Home Screen option to try again.";
     }
   } catch (error) {
     console.error("Unable to open the app install prompt:", error);

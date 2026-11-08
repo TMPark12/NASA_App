@@ -140,7 +140,7 @@ test("activation migrates old API responses without overwriting newer ones", asy
       clients: { async claim() {} }
     },
     caches: {
-      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v6", "nasa-explorer-api", "another-app"]; },
+      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v7", "nasa-explorer-api", "another-app"]; },
       async open(name) {
         if (name === "nasa-explorer-cache-v5") {
           return { async keys() { return [request]; }, async match() { return oldResponse; } };

@@ -127,22 +127,41 @@ test("late modal results do not update a closed or reopened dialog", async () =>
   await pending;
 });
 
-function installHarness(navigator) {
+function installHarness(navigator, { standalone = false, secure = true, logger = console } = {}) {
   const windowHandlers = {};
-  const buttonHandlers = {};
   const status = { textContent: "" };
-  const button = { addEventListener(name, callback) { buttonHandlers[name] = callback; } };
+  const element = () => ({
+    handlers: {},
+    addEventListener(name, callback) { this.handlers[name] = callback; },
+    focus() { this.focused = true; }
+  });
+  const button = element();
+  const confirm = element();
+  const dismiss = element();
+  const dialog = {
+    open: false,
+    showModal() { this.open = true; },
+    close() { this.open = false; }
+  };
+  const elements = {
+    "install-app": button,
+    "install-dialog": dialog,
+    "install-confirm": confirm,
+    "install-dismiss": dismiss,
+    "install-status": status
+  };
   const context = vm.createContext({
-    $: id => id === "install-app" ? button : status,
+    $: id => elements[id],
     navigator,
     window: {
-      matchMedia: () => ({ matches: false }),
+      isSecureContext: secure,
+      matchMedia: () => ({ matches: standalone }),
       addEventListener(name, callback) { windowHandlers[name] = callback; }
     },
-    console
+    console: logger
   });
   vm.runInContext(section("let installPrompt = null;", "async function showFact()"), context);
-  return { windowHandlers, buttonHandlers, status };
+  return { windowHandlers, button, confirm, dismiss, dialog, status };
 }
 
 test("mobile install instructions cover iPhone, desktop-mode iPad and Android", async () => {
@@ -151,11 +170,12 @@ test("mobile install instructions cover iPhone, desktop-mode iPad and Android", 
     { userAgent: "Macintosh", platform: "MacIntel", maxTouchPoints: 5 }
   ]) {
     const app = installHarness(navigator);
-    await app.buttonHandlers.click();
+    assert.equal(app.dialog.open, true);
+    await app.confirm.handlers.click();
     assert.match(app.status.textContent, /Safari.*Share.*Add to Home Screen.*Add/);
   }
   const android = installHarness({ userAgent: "Android", platform: "Linux" });
-  await android.buttonHandlers.click();
+  await android.confirm.handlers.click();
   assert.match(android.status.textContent, /Install app or Add to Home screen/);
 });
 
@@ -168,13 +188,91 @@ test("install button opens the Android prompt and reports installation", async (
     async prompt() { prompted = true; },
     userChoice: Promise.resolve({ outcome: "accepted" })
   });
-  await app.buttonHandlers.click();
+  await app.confirm.handlers.click();
   assert.equal(prevented, true);
   assert.equal(prompted, true);
   assert.match(app.status.textContent, /Installation accepted/);
   app.windowHandlers.appinstalled();
-  await app.buttonHandlers.click();
+  assert.match(app.status.textContent, /has been installed/);
+  assert.equal(app.confirm.hidden, true);
+  assert.equal(app.dismiss.focused, true);
+  app.dismiss.handlers.click();
+  app.button.handlers.click();
   assert.match(app.status.textContent, /already installed/);
+});
+
+test("the install dialog can be dismissed and reopened, but is suppressed in the installed app", () => {
+  const app = installHarness({ userAgent: "Chrome", platform: "Win32" });
+  assert.equal(app.dialog.open, true);
+  app.dismiss.handlers.click();
+  assert.equal(app.dialog.open, false);
+  app.button.handlers.click();
+  assert.equal(app.dialog.open, true);
+
+  const installed = installHarness({ userAgent: "Chrome", platform: "Win32" }, { standalone: true });
+  assert.equal(installed.dialog.open, false);
+  installed.button.handlers.click();
+  assert.match(installed.status.textContent, /already installed/);
+  assert.equal(installed.confirm.hidden, true);
+});
+
+test("desktop installation gives browser-specific and secure-context instructions", async () => {
+  const cases = [
+    [{ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15" }, /File, then Add to Dock/],
+    [{ userAgent: "Mozilla/5.0 Firefox/130.0" }, /Firefox does not support/],
+    [{ userAgent: "Mozilla/5.0 Chrome/130.0" }, /Chrome or Edge.*desktop shortcut/]
+  ];
+  for (const [navigator, expected] of cases) {
+    const app = installHarness(navigator);
+    await app.confirm.handlers.click();
+    assert.match(app.status.textContent, expected);
+  }
+  const insecure = installHarness({ userAgent: "Chrome" }, { secure: false });
+  await insecure.confirm.handlers.click();
+  assert.match(insecure.status.textContent, /HTTPS or localhost/);
+});
+
+test("dismissed native installation does not claim success and can use manual instructions", async () => {
+  const app = installHarness({ userAgent: "Android" });
+  let prompts = 0;
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() {},
+    async prompt() { prompts++; },
+    userChoice: Promise.resolve({ outcome: "dismissed" })
+  });
+  await app.confirm.handlers.click();
+  assert.equal(prompts, 1);
+  assert.match(app.status.textContent, /canceled.*Install app or Add to Home screen/);
+  await app.confirm.handlers.click();
+  assert.equal(prompts, 1);
+  assert.match(app.status.textContent, /Install app or Add to Home screen/);
+});
+
+test("native install failures show actionable instructions", async () => {
+  const errors = [];
+  const app = installHarness({ userAgent: "Android" }, { logger: { error: (...args) => errors.push(args) } });
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() {},
+    async prompt() { throw new Error("prompt failed"); }
+  });
+  await app.confirm.handlers.click();
+  assert.equal(errors.length, 1);
+  assert.match(app.status.textContent, /could not be opened.*Install app or Add to Home screen/);
+});
+
+test("a confirmed installation is not overwritten by an accepted prompt outcome", async () => {
+  const app = installHarness({ userAgent: "Chrome" });
+  let resolveChoice;
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() {},
+    async prompt() {},
+    userChoice: new Promise(resolve => { resolveChoice = resolve; })
+  });
+  const pending = app.confirm.handlers.click();
+  app.windowHandlers.appinstalled();
+  resolveChoice({ outcome: "accepted" });
+  await pending;
+  assert.match(app.status.textContent, /has been installed/);
 });
 
 test("mobile home-screen icons are correctly sized PNGs and included in the app shell", () => {
@@ -241,7 +339,7 @@ test("activation migrates old API responses without overwriting newer ones", asy
       clients: { async claim() {} }
     },
     caches: {
-      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v9", "nasa-explorer-api", "another-app"]; },
+      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v10", "nasa-explorer-api", "another-app"]; },
       async open(name) {
         if (name === "nasa-explorer-cache-v5") {
           return { async keys() { return [request]; }, async match() { return oldResponse; } };

@@ -26,8 +26,7 @@
       <output id="end-date" class="date-display" aria-live="polite"></output>
       <button type="submit" id="load">Load 9 days</button>
       <div class="install-controls">
-        <button type="button" id="install-app" class="install-button">Save Me For Later</button>
-        <p id="install-status" role="status" aria-live="polite"></p>
+        <button type="button" id="install-app" class="install-button">Install NASA Explorer</button>
       </div>
     </form>
   </div>
@@ -38,6 +37,16 @@
   <p id="gallery-status" role="status" aria-live="polite"></p>
   <ul id="gallery" aria-label="Astronomy pictures of the day" tabindex="-1"></ul>
 </main>
+
+<dialog id="install-dialog" aria-labelledby="install-title" aria-describedby="install-description">
+  <h2 id="install-title">Install NASA Explorer?</h2>
+  <p id="install-description">Install the app for quick access from your desktop or home screen. Your browser will ask you to confirm, or show you how to install it.</p>
+  <p id="install-status" role="status" aria-live="polite"></p>
+  <div class="install-actions">
+    <button type="button" id="install-confirm" class="install-button">Install</button>
+    <button type="button" id="install-dismiss" class="nav-btn">Not now</button>
+  </div>
+</dialog>
 
 <div id="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modal-title" aria-describedby="modal-text">
   <div class="modal-box">
@@ -353,12 +362,33 @@ $("controls").addEventListener("submit", e => {
 let installPrompt = null;
 let installedThisSession = false;
 const installButton = $("install-app");
+const installDialog = $("install-dialog");
+const installConfirm = $("install-confirm");
+const installDismiss = $("install-dismiss");
 const installStatus = $("install-status");
 const appDisplayModes = ["standalone", "minimal-ui", "fullscreen"]
   .map(mode => window.matchMedia(`(display-mode: ${mode})`));
 const isRunningAsApp = () => navigator.standalone === true || appDisplayModes.some(mode => mode.matches);
 const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function installInstructions() {
+  if (!window.isSecureContext) return "Installation requires HTTPS or localhost. Open this site over a secure connection and try again.";
+  if (isAppleMobile()) return "On iPhone or iPad, open this page in Safari, tap Share, choose Add to Home Screen, then tap Add.";
+  if (/Android/i.test(navigator.userAgent)) return "In your browser menu, choose Install app or Add to Home screen, then confirm.";
+  if (/Firefox/i.test(navigator.userAgent)) return "Firefox does not support installing this web app on desktop. Open this page in Chrome or Edge and use its Install app option.";
+  if (/Macintosh|Mac OS X/i.test(navigator.userAgent) && /^((?!chrome|crios|edg).)*safari/i.test(navigator.userAgent)) {
+    return "In Safari on macOS Sonoma or later, choose File, then Add to Dock, and confirm.";
+  }
+  return "In Chrome or Edge, open the browser menu and choose Install app (or Install NASA Explorer), then confirm. Your operating system controls whether a desktop shortcut is created.";
+}
+
+function openInstallDialog() {
+  installStatus.textContent = isRunningAsApp() || installedThisSession ? "NASA Explorer is already installed." : "";
+  installConfirm.hidden = isRunningAsApp() || installedThisSession;
+  installDismiss.textContent = installConfirm.hidden ? "Close" : "Not now";
+  if (!installDialog.open) installDialog.showModal();
+}
 
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
@@ -369,20 +399,21 @@ window.addEventListener("appinstalled", () => {
   installPrompt = null;
   installedThisSession = true;
   installStatus.textContent = "NASA Explorer has been installed.";
+  installConfirm.hidden = true;
+  installDismiss.textContent = "Close";
+  if (installDialog.open) installDismiss.focus();
 });
 
-installButton.addEventListener("click", async () => {
+installButton.addEventListener("click", openInstallDialog);
+installDismiss.addEventListener("click", () => installDialog.close());
+installConfirm.addEventListener("click", async () => {
   installStatus.textContent = "";
   if (isRunningAsApp() || installedThisSession) {
     installStatus.textContent = "NASA Explorer is already installed.";
     return;
   }
   if (!installPrompt) {
-    installStatus.textContent = isAppleMobile()
-      ? "On iPhone or iPad, open this page in Safari, tap Share, choose Add to Home Screen, then tap Add."
-      : /Android/.test(navigator.userAgent)
-        ? "In your browser menu, choose Install app or Add to Home screen, then confirm."
-        : "To add NASA Explorer, use your browser's Install or Add to Home Screen option.";
+    installStatus.textContent = installInstructions();
     return;
   }
 
@@ -394,13 +425,15 @@ installButton.addEventListener("click", async () => {
     if (outcome === "accepted") {
       if (!installedThisSession) installStatus.textContent = "Installation accepted. Follow your browser's instructions to finish.";
     } else {
-      installStatus.textContent = "Installation was canceled. Use your browser's Install or Add to Home Screen option to try again.";
+      installStatus.textContent = "Installation was canceled. " + installInstructions();
     }
   } catch (error) {
     console.error("Unable to open the app install prompt:", error);
-    installStatus.textContent = "The install prompt could not be opened. Try your browser's Install or Add to Home Screen option.";
+    installStatus.textContent = "The install prompt could not be opened. " + installInstructions();
   }
 });
+
+if (!isRunningAsApp()) openInstallDialog();
 
 async function showFact() {
   try {

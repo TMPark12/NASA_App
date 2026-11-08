@@ -23,8 +23,10 @@ A random “Did You Know?” fact displays on load
 
 The app can be installed as a PWA when served over HTTPS (GitHub Pages provides HTTPS). Its app shell is cached for offline loading, and successful NASA APOD API responses are cached for network-first fallback.
 
-On Android, tap **Save Me For Later** and accept the install prompt. If no prompt appears, use the browser menu's **Install app** or **Add to Home screen** option. On iPhone or iPad, open the site in Safari, tap **Save Me For Later** for instructions, then tap **Share**, **Add to Home Screen**, and **Add**. iOS does not allow the site to open the install prompt itself. The app includes home-screen icons for both platforms. Installation requires a supported browser and HTTPS (or localhost).
+When the site opens in a browser, an installation dialog offers **Install** or **Not now**. Choose **Install NASA Explorer** later to reopen it. On supported browsers, **Install** opens the browser's confirmation; accept it to install the app. If the browser does not provide a prompt, the dialog gives manual instructions.
 
-Controls are sized for touch, and the gallery and dialog adapt to narrow screens. The install button remains available in the installed app and reports that it is already installed. A browser tab cannot reliably determine whether the app was installed previously.
+On Android, use the browser menu's **Install app** or **Add to Home screen** option if needed. On iPhone or iPad, open the site in Safari, tap **Share**, **Add to Home Screen**, and **Add**. On macOS Sonoma or later, Safari offers **File > Add to Dock**. On Windows, macOS, and Linux, Chrome or Edge may offer installation through the browser menu; desktop Firefox does not support installing this PWA. Browser and operating-system support varies: a website cannot create a desktop shortcut or silently install itself, and the browser or operating system decides whether a desktop shortcut is offered. Installation requires a supported browser and HTTPS (or localhost).
+
+Controls are sized for touch, and the gallery and dialogs adapt to narrow screens. The startup dialog is suppressed when the app is running in its installed window. The install button remains available there and reports that it is already installed. A browser tab cannot reliably determine whether the app was installed previously, so it may offer installation again.
 
 Run the regression tests with `node --test tests/app.test.js`.

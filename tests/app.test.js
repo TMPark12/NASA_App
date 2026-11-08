@@ -419,9 +419,13 @@ test("install button opens the Android prompt and reports installation", async (
     async prompt() { prompted = true; },
     userChoice: Promise.resolve({ outcome: "accepted" })
   });
-  await app.confirm.handlers.click();
+  assert.equal(app.confirm.textContent, "Install");
+  const pending = app.confirm.handlers.click();
   assert.equal(prevented, true);
   assert.equal(prompted, true);
+  assert.equal(app.confirm.disabled, true);
+  await pending;
+  assert.equal(app.confirm.disabled, false);
   assert.match(app.status.textContent, /Installation accepted/);
   app.windowHandlers.appinstalled();
   assert.match(app.status.textContent, /has been installed/);
@@ -430,6 +434,45 @@ test("install button opens the Android prompt and reports installation", async (
   app.dismiss.handlers.click();
   app.button.handlers.click();
   assert.match(app.status.textContent, /already installed/);
+});
+
+test("the install dialog updates when Android's native prompt arrives later", async () => {
+  const app = installHarness({ userAgent: "Android" });
+  assert.equal(app.confirm.textContent, "Show installation steps");
+  assert.match(app.status.textContent, /has not provided an installation prompt/);
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() {},
+    async prompt() {},
+    userChoice: Promise.resolve({ outcome: "dismissed" })
+  });
+  assert.equal(app.confirm.textContent, "Install");
+  assert.match(app.status.textContent, /confirm in your browser/);
+  await app.confirm.handlers.click();
+  assert.match(app.status.textContent, /canceled/);
+});
+
+test("the install button cannot open multiple native prompts at once", async () => {
+  const app = installHarness({ userAgent: "Android" });
+  let resolveChoice;
+  let calls = 0;
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() {},
+    prompt() { calls++; return Promise.resolve(); },
+    userChoice: new Promise(resolve => { resolveChoice = resolve; })
+  });
+  const first = app.confirm.handlers.click();
+  await app.confirm.handlers.click();
+  assert.equal(calls, 1);
+  resolveChoice({ outcome: "dismissed" });
+  await first;
+  assert.equal(app.confirm.disabled, false);
+});
+
+test("Android installation steps explain how to open the browser menu", async () => {
+  const app = installHarness({ userAgent: "Android" });
+  await app.confirm.handlers.click();
+  assert.match(app.status.textContent, /Close this dialog.*three-dot menu.*Install app or Add to Home screen.*Chrome/);
+  assert.equal(app.dismiss.textContent, "Close");
 });
 
 test("the install dialog can be dismissed and reopened, but is suppressed in the installed app", () => {
@@ -527,6 +570,22 @@ test("a confirmed installation is not overwritten by an accepted prompt outcome"
   assert.match(app.status.textContent, /has been installed/);
 });
 
+test("a confirmed installation is not overwritten by a late canceled prompt outcome", async () => {
+  const app = installHarness({ userAgent: "Android" });
+  let resolveChoice;
+  app.windowHandlers.beforeinstallprompt({
+    preventDefault() {},
+    async prompt() {},
+    userChoice: new Promise(resolve => { resolveChoice = resolve; })
+  });
+  const pending = app.confirm.handlers.click();
+  app.windowHandlers.appinstalled();
+  resolveChoice({ outcome: "dismissed" });
+  await pending;
+  assert.match(app.status.textContent, /has been installed/);
+  assert.equal(app.confirm.hidden, true);
+});
+
 test("mobile home-screen icons are correctly sized PNGs and included in the app shell", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
   for (const size of [180, 192, 512]) {
@@ -591,7 +650,7 @@ test("activation migrates old API responses without overwriting newer ones", asy
       clients: { async claim() {} }
     },
     caches: {
-      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v12", "nasa-explorer-api", "another-app"]; },
+      async keys() { return ["nasa-explorer-cache-v5", "nasa-explorer-cache-v13", "nasa-explorer-api", "another-app"]; },
       async open(name) {
         if (name === "nasa-explorer-cache-v5") {
           return { async keys() { return [request]; }, async match() { return oldResponse; } };

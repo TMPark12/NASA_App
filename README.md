@@ -5,7 +5,7 @@ Create an HTML page that fetches the 9 most recent NASA pictures
 
 Display pictures in a rotating gallery
 
-Fetches APOD data for 9 consecutive days based on selected dates, using a valid API key
+Fetches up to 9 consecutive days of APOD data when a date is selected, using a valid API key. The date range is limited to NASA's archive, which starts June 16, 1995.
 
 Dynamically creates and displays 9 gallery items using API data, including image, title, and date
 

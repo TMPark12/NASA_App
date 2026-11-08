@@ -7,7 +7,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 .date-toolbar { display: flex; flex-direction: column; align-items: center; margin-bottom: 1rem; }
 .controls { display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 0; }
 .controls input, .controls button, .date-display { padding: 2pt; font-size: 1rem; border-radius: 4px; border: 1px solid var(--nasa-blue); }
-.controls input, .date-display { width: 6.5rem; text-align: center; }
+.controls input { width: 9rem; }
+.date-display { width: 6.5rem; text-align: center; }
 .date-display { background: #101830; color: #fff; }
 .controls button { background: var(--nasa-red-dark); color: #fff; border: none; cursor: pointer; }
 .install-controls { display: flex; flex-direction: column; align-items: center; }

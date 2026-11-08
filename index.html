@@ -20,7 +20,7 @@
   <div class="date-toolbar">
     <form class="controls" id="controls">
       <label for="start">Latest date:</label>
-      <input type="text" id="start" inputmode="numeric" placeholder="MM/DD/YYYY" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="Enter a date as MM/DD/YYYY" required>
+      <input type="date" id="start" min="1995-06-16" required>
       <label for="end-date">End date:</label>
       <output id="end-date" class="date-display" aria-live="polite"></output>
       <button type="submit" id="load">Load 9 days</button>
@@ -30,7 +30,7 @@
       </div>
     </form>
   </div>
-  <p class="date-note">Pictures are listed newest to oldest: the latest date appears first, followed by earlier dates. The end date is the oldest date in the 9-day range.</p>
+  <p class="date-note">Pictures are listed newest to oldest. The end date is the oldest date in the range, up to 9 days inclusive. NASA's archive begins June 16, 1995.</p>
   <aside id="fact" aria-label="Did you know?"></aside>
   <div id="loading" role="status" hidden>Beaming data in, please wait...</div>
   <div id="error" class="error" role="alert"></div>
@@ -62,15 +62,6 @@ const $ = id => document.getElementById(id);
 const fmt = d => d.toISOString().slice(0, 10);
 const MIN_DATE = "1995-06-16";
 
-function parseUsDate(value) {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
-  if (!match) return null;
-  const [, month, day, year] = match;
-  const isoDate = `${year}-${month}-${day}`;
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && fmt(date) === isoDate ? isoDate : null;
-}
-
 function formatUsDate(isoDate) {
   const [year, month, day] = isoDate.split("-");
   return `${month}/${day}/${year}`;
@@ -82,9 +73,14 @@ function addDays(date, n) {
   return d;
 }
 
+function earliestDate(latest) {
+  const date = fmt(addDays(latest, -(DAYS - 1)));
+  return date < MIN_DATE ? MIN_DATE : date;
+}
+
 function updateEndDate() {
-  const latest = parseUsDate($("start").value);
-  $("end-date").textContent = latest ? formatUsDate(fmt(addDays(latest, -(DAYS - 1)))) : "";
+  const latest = $("start").value;
+  $("end-date").textContent = latest ? formatUsDate(earliestDate(latest)) : "";
 }
 
 function youtubeEmbed(url) {
@@ -133,10 +129,13 @@ async function replacePlaceholders(data, latest, earliest) {
   }
 }
 
+let galleryRequest = 0;
+
 async function loadGallery() {
-  const latest = parseUsDate($("start").value);
+  const latest = $("start").value;
   if (!latest) return;
-  const earliest = fmt(addDays(latest, -(DAYS - 1)));
+  const request = ++galleryRequest;
+  const earliest = earliestDate(latest);
   const gallery = $("gallery");
   gallery.innerHTML = "";
   $("error").replaceChildren();
@@ -147,13 +146,20 @@ async function loadGallery() {
     if (!res.ok) throw new Error("Unable to load astronomy pictures.");
     const results = await res.json();
     if (!Array.isArray(results) || results.length === 0) throw new Error("No astronomy pictures were found for those dates.");
+    if (!results.every(entry => entry && typeof entry.date === "string" && entry.date >= earliest && entry.date <= latest)) {
+      throw new Error("NASA returned pictures outside the selected date range.");
+    }
     const sorted = results.sort((a, b) => b.date.localeCompare(a.date));
     const data = await replacePlaceholders(sorted, latest, earliest);
+    if (request !== galleryRequest) return;
     data.forEach(entry => { cache[entry.date] = entry; gallery.appendChild(createItem(entry)); });
-  } catch {
-    showRecoveryMessage($("error"), "Sorry, we couldn't find the astronomy pictures for those dates.");
+  } catch (error) {
+    if (request === galleryRequest) {
+      console.error("Unable to load astronomy pictures:", error);
+      showRecoveryMessage($("error"), "Sorry, we couldn't find the astronomy pictures for those dates.");
+    }
   } finally {
-    $("loading").hidden = true;
+    if (request === galleryRequest) $("loading").hidden = true;
   }
 }
 
@@ -306,17 +312,20 @@ document.addEventListener("keydown", e => {
   }
 });
 $("start").addEventListener("input", () => {
-  $("start").setCustomValidity("");
+  galleryRequest++;
+  $("gallery").replaceChildren();
+  $("error").replaceChildren();
+  $("loading").hidden = true;
   updateEndDate();
+});
+$("start").addEventListener("change", () => {
+  $("start").max = fmt(new Date());
+  if ($("controls").reportValidity()) loadGallery();
 });
 $("controls").addEventListener("submit", e => {
   e.preventDefault();
-  const latest = parseUsDate($("start").value);
-  const maxDate = fmt(new Date());
-  const isInRange = latest && latest >= MIN_DATE && latest <= maxDate;
-  $("start").setCustomValidity(isInRange ? "" : `Enter a valid date between ${formatUsDate(MIN_DATE)} and ${formatUsDate(maxDate)}.`);
-  if (isInRange) loadGallery();
-  else $("start").reportValidity();
+  $("start").max = fmt(new Date());
+  if ($("controls").reportValidity()) loadGallery();
 });
 
 let installPrompt = null;
@@ -378,7 +387,8 @@ async function showFact() {
 
 showFact();
 const today = new Date();
-$("start").value = formatUsDate(fmt(today));
+$("start").max = fmt(today);
+$("start").value = fmt(today);
 updateEndDate();
 loadGallery();
 

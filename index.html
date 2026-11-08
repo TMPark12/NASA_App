@@ -6,24 +6,36 @@
 <title>NASA Astronomy Picture of the Day Gallery</title>
 <meta name="description" content="Browse nine days of NASA Astronomy Pictures of the Day with titles, dates and full explanations.">
 <meta name="theme-color" content="#0b3d91">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NASA Explorer">
 </head>
 <body>
 <a class="skip-link" href="#gallery">Skip to gallery</a>
 <header><h1>NASA Astronomy Picture of the Day</h1></header>
 <main id="main">
-  <form class="controls" id="controls">
-    <label for="start">Latest date:</label>
-    <input type="date" id="start" min="1995-06-16">
-    <button type="submit" id="load">Load 9 days</button>
-  </form>
+  <div class="date-toolbar">
+    <form class="controls" id="controls">
+      <label for="start">Latest date:</label>
+      <input type="text" id="start" inputmode="numeric" placeholder="MM/DD/YYYY" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="Enter a date as MM/DD/YYYY" required>
+      <label for="end-date">End date:</label>
+      <output id="end-date" class="date-display" aria-live="polite"></output>
+      <button type="submit" id="load">Load 9 days</button>
+      <div class="install-controls">
+        <button type="button" id="install-app" class="install-button">Save Me For Later</button>
+        <p id="install-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+  </div>
+  <p class="date-note">Pictures are listed newest to oldest: the latest date appears first, followed by earlier dates. The end date is the oldest date in the 9-day range.</p>
   <aside id="fact" aria-label="Did you know?"></aside>
   <div id="loading" role="status" hidden>Beaming data in, please wait...</div>
   <div id="error" class="error" role="alert"></div>
   <ul id="gallery" aria-label="Astronomy pictures of the day"></ul>
 </main>
-
-<div id="preview" aria-hidden="true"><img alt=""><img alt=""></div>
 
 <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-text">
   <div class="modal-box">
@@ -48,11 +60,31 @@ const FEED_PAGE_SIZE = 25;
 
 const $ = id => document.getElementById(id);
 const fmt = d => d.toISOString().slice(0, 10);
+const MIN_DATE = "1995-06-16";
+
+function parseUsDate(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (!match) return null;
+  const [, month, day, year] = match;
+  const isoDate = `${year}-${month}-${day}`;
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && fmt(date) === isoDate ? isoDate : null;
+}
+
+function formatUsDate(isoDate) {
+  const [year, month, day] = isoDate.split("-");
+  return `${month}/${day}/${year}`;
+}
 
 function addDays(date, n) {
   const d = new Date(date + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d;
+}
+
+function updateEndDate() {
+  const latest = parseUsDate($("start").value);
+  $("end-date").textContent = latest ? formatUsDate(fmt(addDays(latest, -(DAYS - 1)))) : "";
 }
 
 function youtubeEmbed(url) {
@@ -102,7 +134,8 @@ async function replacePlaceholders(data, latest, earliest) {
 }
 
 async function loadGallery() {
-  const latest = $("start").value;
+  const latest = parseUsDate($("start").value);
+  if (!latest) return;
   const earliest = fmt(addDays(latest, -(DAYS - 1)));
   const gallery = $("gallery");
   gallery.innerHTML = "";
@@ -136,32 +169,6 @@ function showRecoveryMessage(container, message) {
   );
 }
 
-const canHover = matchMedia("(hover: hover)").matches;
-const previewImgs = [...document.querySelectorAll("#preview img")];
-let activePreview = 0;
-let hideTimer;
-
-// One shared layer crossfades between pictures; the short hide delay keeps it up while moving between cards.
-function showPreview(src) {
-  clearTimeout(hideTimer);
-  const cur = previewImgs[activePreview];
-  if (cur.dataset.src !== src) {
-    const next = previewImgs[1 - activePreview];
-    next.src = src;
-    next.dataset.src = src;
-    next.classList.add("on");
-    cur.classList.remove("on");
-    activePreview = 1 - activePreview;
-  }
-  $("preview").classList.add("show");
-}
-
-function hidePreview(immediate) {
-  clearTimeout(hideTimer);
-  if (immediate) $("preview").classList.remove("show");
-  else hideTimer = setTimeout(() => $("preview").classList.remove("show"), 120);
-}
-
 const cache = {};
 
 async function fetchEntry(date) {
@@ -174,7 +181,7 @@ async function fetchEntry(date) {
   return (cache[date] = entry);
 }
 
-const hasPrevious = date => fmt(addDays(date, -1)) >= $("start").min;
+const hasPrevious = date => fmt(addDays(date, -1)) >= MIN_DATE;
 
 async function showNext() {
   const date = fmt(addDays(current.date, -1));
@@ -225,14 +232,6 @@ function createItem(entry) {
   t.textContent = entry.date;
   meta.append(h, t);
   btn.append(thumb, meta);
-  const pic = thumb.querySelector("img");
-  if (canHover && pic) {
-    const show = () => showPreview(pic.currentSrc || pic.src);
-    el.addEventListener("mouseenter", show);
-    el.addEventListener("focusin", e => { if (e.target.matches(":focus-visible")) show(); });
-    el.addEventListener("mouseleave", () => hidePreview());
-    el.addEventListener("focusout", () => hidePreview());
-  }
   btn.addEventListener("click", () => openModal(entry, btn));
   el.appendChild(btn);
   return el;
@@ -243,7 +242,6 @@ let current = null;
 
 function openModal(entry, trigger) {
   lastFocus = trigger || document.activeElement;
-  hidePreview(true);
   showEntry(entry);
   $("modal").classList.add("open");
   document.body.classList.add("modal-open");
@@ -307,7 +305,65 @@ document.addEventListener("keydown", e => {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 });
-$("controls").addEventListener("submit", e => { e.preventDefault(); if ($("start").value) loadGallery(); });
+$("start").addEventListener("input", () => {
+  $("start").setCustomValidity("");
+  updateEndDate();
+});
+$("controls").addEventListener("submit", e => {
+  e.preventDefault();
+  const latest = parseUsDate($("start").value);
+  const maxDate = fmt(new Date());
+  const isInRange = latest && latest >= MIN_DATE && latest <= maxDate;
+  $("start").setCustomValidity(isInRange ? "" : `Enter a valid date between ${formatUsDate(MIN_DATE)} and ${formatUsDate(maxDate)}.`);
+  if (isInRange) loadGallery();
+  else $("start").reportValidity();
+});
+
+let installPrompt = null;
+let installedThisSession = false;
+const installButton = $("install-app");
+const installStatus = $("install-status");
+const appDisplayModes = ["standalone", "minimal-ui", "fullscreen"]
+  .map(mode => window.matchMedia(`(display-mode: ${mode})`));
+const isRunningAsApp = () => navigator.standalone === true || appDisplayModes.some(mode => mode.matches);
+
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  installPrompt = event;
+});
+
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  installedThisSession = true;
+  installStatus.textContent = "NASA Explorer has been installed.";
+});
+
+installButton.addEventListener("click", async () => {
+  installStatus.textContent = "";
+  if (isRunningAsApp() || installedThisSession) {
+    installStatus.textContent = "NASA Explorer is already installed.";
+    return;
+  }
+  if (!installPrompt) {
+    installStatus.textContent = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      ? "To add NASA Explorer, tap Share, then choose Add to Home Screen."
+      : "To add NASA Explorer, use your browser's Install or Add to Home Screen option.";
+    return;
+  }
+
+  const prompt = installPrompt;
+  installPrompt = null;
+  try {
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === "accepted") {
+      if (!installedThisSession) installStatus.textContent = "Installation accepted. Follow your browser's instructions to finish.";
+    }
+  } catch (error) {
+    console.error("Unable to open the app install prompt:", error);
+    installStatus.textContent = "The install prompt could not be opened. Try your browser's Install or Add to Home Screen option.";
+  }
+});
 
 async function showFact() {
   try {
@@ -322,9 +378,16 @@ async function showFact() {
 
 showFact();
 const today = new Date();
-$("start").max = fmt(today);
-$("start").value = fmt(today);
+$("start").value = formatUsDate(fmt(today));
+updateEndDate();
 loadGallery();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js")
+      .catch(error => console.error("Service worker registration failed:", error));
+  });
+}
 </script>
 </body>
 </html>

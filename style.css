@@ -4,21 +4,25 @@ body { margin: 0; background: var(--bg); color: #fff; font-family: "Helvetica Ne
 header { background: var(--nasa-blue); padding: 1.5rem; text-align: center; border-bottom: 4px solid var(--nasa-red); }
 header h1 { margin: 0; letter-spacing: 0.15em; text-transform: uppercase; }
 main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
-.controls { display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-.controls input, .controls button { padding: 0.5rem 0.75rem; font-size: 1rem; border-radius: 4px; border: 1px solid var(--nasa-blue); }
+.date-toolbar { display: flex; flex-direction: column; align-items: center; margin-bottom: 1rem; }
+.controls { display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 0; }
+.controls input, .controls button, .date-display { padding: 2pt; font-size: 1rem; border-radius: 4px; border: 1px solid var(--nasa-blue); }
+.controls input, .date-display { width: 6.5rem; text-align: center; }
+.date-display { background: #101830; color: #fff; }
 .controls button { background: var(--nasa-red-dark); color: #fff; border: none; cursor: pointer; }
+.install-controls { display: flex; flex-direction: column; align-items: center; }
+.install-button { padding: 0.98rem 2.01rem; border: 2px solid #fff; border-radius: 0; background: var(--nasa-red); color: #fff; font: inherit; font-size: 1.265rem; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; box-shadow: 0 0 0 4px rgba(252, 61, 33, 0.25), 0 6px 18px rgba(0, 0, 0, 0.4); transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease; }
+.install-button:hover:not(:disabled) { background: var(--nasa-red-dark); transform: translateY(-2px); box-shadow: 0 0 0 5px rgba(252, 61, 33, 0.35), 0 9px 22px rgba(0, 0, 0, 0.45); }
+.install-button:disabled { opacity: 0.65; cursor: default; }
+#install-status { margin: 0.35rem 0 0; color: #d3ddf2; text-align: center; }
+.date-note { margin: 0 auto 1rem; max-width: 48rem; color: #d3ddf2; text-align: center; }
 #fact { background: #101830; border-left: 4px solid var(--nasa-red); padding: 1rem; margin-bottom: 1.5rem; }
 #loading { text-align: center; font-size: 1.2rem; padding: 2rem; }
 #gallery { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
 .item { background: #101830; border-radius: 6px; overflow: hidden; }
 .item-btn { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .thumb { height: 200px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
-.thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
-.item-btn:hover .thumb img, .item-btn:focus-visible .thumb img { transform: scale(1.05); }
-#preview { position: fixed; inset: 0; z-index: 5; background: rgba(0,0,0,0.92); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.25s ease, visibility 0s linear 0.25s; }
-#preview.show { opacity: 1; visibility: visible; transition: opacity 0.25s ease; }
-#preview img { position: absolute; top: 50%; left: 50%; width: 75vw; height: 75vh; object-fit: contain; transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.3s ease; }
-#preview img.on { opacity: 1; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
 .video-thumb { padding: 1rem; text-align: center; color: #9db8ff; }
 .item .meta { padding: 0.75rem; }
 .item h3 { margin: 0 0 0.25rem; font-size: 1rem; }
@@ -38,10 +42,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 .skip-link:focus { top: 0.5rem; }
 a:focus-visible, button:focus-visible, input:focus-visible, iframe:focus-visible { outline: 3px solid #ffd54a; outline-offset: 2px; }
 .modal-box a { color: #9db8ff; }
-@media (prefers-reduced-motion: reduce) {
-  .thumb img, #preview, #preview img { transition: none !important; }
-  .item-btn:hover .thumb img, .item-btn:focus-visible .thumb img { transform: none; }
-}
 .modal-nav { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; }
 .nav-btn { padding: 0.6rem 1rem; font-size: 1rem; border-radius: 4px; border: 2px solid var(--nasa-blue); background: transparent; color: #fff; cursor: pointer; transition: background 0.2s ease, border-color 0.2s ease; }
 .nav-btn:hover:not(:disabled), .nav-btn:focus-visible { background: var(--nasa-red-dark); border-color: #fff; }

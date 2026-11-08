@@ -20,3 +20,7 @@ Video entries from the API are detected and handled—either embedded or display
 A random “Did You Know?” fact displays on load
 
 Gallery images scale up smoothly on hover, with an expanded view capped at 75% of the screen
+
+The app can be installed as a PWA when served over HTTPS (GitHub Pages provides HTTPS). Its app shell is cached for offline loading, and successful NASA APOD API responses are cached for network-first fallback.
+
+Use **Save Me For Later** to open the install prompt when available, or follow the browser's installation instructions. The button remains available in the installed app and reports that it is already installed. A browser tab cannot reliably determine whether the app was installed previously.
